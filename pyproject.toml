@@ -1,0 +1,30 @@
+[project]
+name = "biolm-demo"
+version = "0.1.0"
+description = "BioLM Demo: Biological Language Model demonstrations and experiments"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "torch==2.5.1",
+  "transformers[torch]>=4.48.1",
+]
+
+[project.optional-dependencies]
+mamba = ["mamba-ssm[causal-conv1d]==2.2.4"]
+
+[tool.uv]
+no-build-isolation-package = ["mamba-ssm"]
+
+[[tool.uv.dependency-metadata]]
+name = "mamba-ssm"
+version = "2.2.4"
+requires-dist = ["torch", "einops"]
+
+[tool.setuptools]
+# This is necessary when multiple top-level directories are present
+packages = ["src"]
+
+[dependency-groups]
+dev = ["pytest>=8.3.4", "pytype>=2024.10.11", "mosaicml>=0.28.0"]
+
+

@@ -1,3 +1,8 @@
+### Python ###
+# Default uv virtual env
+.venv/
+uv.lock
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -205,3 +210,9 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+.pytype/
+
+.DS_Store
+.idea/
+.specstory/
