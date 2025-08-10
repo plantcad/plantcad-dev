@@ -9,6 +9,7 @@ repos:
       - id: end-of-file-fixer
       - id: check-yaml
       - id: debug-statements
+        exclude: ^src/debug\.py$
       - id: mixed-line-ending
   - repo: https://github.com/pre-commit/pygrep-hooks
     rev: v1.10.0

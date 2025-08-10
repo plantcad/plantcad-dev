@@ -93,6 +93,8 @@ def compute_dataset_stats(
         "tasks_per_node": slurm_config.tasks_per_node,
         "nodes": nodes,
     }
+    # It is possible to pass a "setup" string here for arbitrary sbatch script commands:
+    # https://github.com/facebookincubator/submitit/blob/64119dc669a21d69f46c9d9a3f556ce447d238d3/submitit/slurm/slurm.py#L294-L295
     executor.update_parameters(**executor_params)
 
     logger.info(f"Submitting {environment} job with parameters: {executor_params}")
