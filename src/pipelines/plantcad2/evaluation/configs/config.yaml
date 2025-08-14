@@ -9,11 +9,11 @@ models:
     medium:
       path: kuleshov-group/compo-cad2-l48-dna-chtk-c8k-1t-v2d-b2-lr4e4-fcpffa-ba476838
       name: pcv2_l48_d1024
-      max_sequence_length: 1024
+      max_sequence_length: 8192
     large:
       path: kuleshov-group/compo-cad2-l48-d1536-dna-chtk-c8k-1t-v1-b2-lr4e4-NzqiLr
       name: pcv2_l48_d1536
-      max_sequence_length: 1536
+      max_sequence_length: 8192
 datasets:
   evaluation:
     plantcad1:
