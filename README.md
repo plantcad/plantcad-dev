@@ -20,16 +20,23 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Create environment
 # ------------------
 uv venv --python 3.12
-uv sync
+uv sync # Install core dependencies (namely torch) prior to mamba
 uv sync --extra mamba
 
 # Install dev tools
 # -----------------
-uv sync --group dev
+uv sync --extra mamba --group dev
 uv run pre-commit install
 ```
 
 ## Execution
+
+WIP
+
+TODO:
+- Add configuration docs 
+- Explain handling failures
+- Discuss SLURM steps and storage for inputs/outputs
 
 ```bash
 export METAFLOW_RUN_MAX_WORKERS=1
