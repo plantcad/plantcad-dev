@@ -10,7 +10,7 @@ class TestHfRepo:
         [
             ("dataset", False, "datasets/org/repo"),
             ("model", False, "org/repo"),
-            ("dataset", True, "datasets/org/__repo__"),
+            ("dataset", True, "datasets/org/_dev_repo"),
         ],
     )
     def test_path(self, type_, internal, expected):
@@ -29,8 +29,8 @@ class TestHfRepo:
             ("dataset", False, "hf://datasets/org/repo"),
             ("model", False, "hf://org/repo"),
             ("space", False, "hf://spaces/org/repo"),
-            ("dataset", True, "hf://datasets/org/__repo__"),
-            ("model", True, "hf://org/__repo__"),
+            ("dataset", True, "hf://datasets/org/_dev_repo"),
+            ("model", True, "hf://org/_dev_repo"),
         ],
     )
     def test_url(self, type_, internal, expected_base):
@@ -109,7 +109,7 @@ class TestHfRepo:
         "entity,name,internal,expected",
         [
             ("my-org", "dataset", False, "my-org/dataset"),
-            ("my-org", "dataset", True, "my-org/__dataset__"),
+            ("my-org", "dataset", True, "my-org/_dev_dataset"),
         ],
     )
     def test_to_repo_id(self, entity, name, internal, expected):

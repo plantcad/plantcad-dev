@@ -97,7 +97,7 @@ with fs.open(repo.url("data.txt"), "w") as f:
 
 # Example with internal naming convention
 internal_repo = io.hf_internal_repo("test-dataset")
-io.create_on_hub(internal_repo, private=False)  # Creates "plantcad/__test-dataset__"
+io.create_on_hub(internal_repo, private=False)  # Creates "plantcad/_dev_test-dataset"
 
 with fs.open(internal_repo.url("data.txt"), "w") as f:
     f.write(content)

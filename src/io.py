@@ -25,7 +25,7 @@ class HfRepo:
     type : RepoType
         Repository type ("dataset", "model", or "space")
     internal : bool
-        Whether to use internal naming convention (adds __ prefix/suffix, e.g. "__my-dataset__")
+        Whether to use internal naming convention (adds _dev_ prefix, e.g. "_dev_my-dataset")
     """
 
     entity: str
@@ -52,9 +52,9 @@ class HfRepo:
         ...     entity="my-org", name="dataset", type="dataset", internal=True
         ... )
         >>> repo_internal.to_repo_id()
-        'my-org/__dataset__'
+        'my-org/_dev_dataset'
         """
-        name = f"__{self.name}__" if self.internal else self.name
+        name = f"_dev_{self.name}" if self.internal else self.name
         return f"{self.entity}/{name}"
 
     def path(self, *path: str) -> str:
@@ -76,11 +76,11 @@ class HfRepo:
         ...     entity="my-org", name="dataset", type="dataset", internal=True
         ... )
         >>> repo.path()
-        'my-org/__dataset__'
+        'my-org/_dev_dataset'
         >>> repo.path("data", "train.csv")
-        'my-org/__dataset__/data/train.csv'
+        'my-org/_dev_dataset/data/train.csv'
         """
-        name = f"__{self.name}__" if self.internal else self.name
+        name = f"_dev_{self.name}" if self.internal else self.name
         # Repos of type "model" require no path prefix; dataset and space do
         # Map singular types to plural path prefixes
         type_to_prefix = {"dataset": "datasets", "space": "spaces"}
@@ -190,19 +190,19 @@ def hf_internal_repo(
     >>> # Create an internal dataset repository
     >>> repo = hf_internal_repo("my-data")
     >>> repo.path()
-    'datasets/my-org/__my-data__'
+    'datasets/my-org/_dev_my-data'
     >>> repo.url("train.csv")
-    'hf://datasets/my-org/__my-data__/train.csv'
+    'hf://datasets/my-org/_dev_my-data/train.csv'
 
     >>> # Create an internal model repository
     >>> model_repo = hf_internal_repo("my-model", type="model")
     >>> model_repo.path("config.json")
-    'my-org/__my-model__/config.json'
+    'my-org/_dev_my-model/config.json'
 
     >>> # Use with custom entity
     >>> repo = hf_internal_repo("dataset", entity="custom-org")
     >>> repo.url()
-    'hf://datasets/custom-org/__dataset__'
+    'hf://datasets/custom-org/_dev_dataset'
     """
     return HfRepo(entity, name, type, internal=True)
 
@@ -227,7 +227,7 @@ def hf_repo(
     type : RepoType, optional
         Repository type - "dataset", "model", or "space", by default "dataset"
     internal : bool, optional
-        Use internal naming convention with __ prefix/suffix, by default False
+        Use internal naming convention with _dev_ prefix, by default False
 
     Returns
     -------
