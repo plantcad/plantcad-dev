@@ -15,7 +15,6 @@ dependencies = [
   "numpy==2.3.2",
   "scikit-learn==1.7.1",
   "datasets==4.0.0",
-  "metaflow==2.17.0",
   "tqdm==4.67.1",
   "pydantic-settings==2.10.1",
   "omegaconf>=2.3.0",
@@ -34,6 +33,7 @@ packages = ["src"]
 torch = { index = "pytorch-cu128" }
 causal-conv1d = { git = "https://github.com/Dao-AILab/causal-conv1d", tag = "v1.5.0.post8" }
 mamba-ssm = { git = "https://github.com/state-spaces/mamba", tag = "v2.2.4" }
+thalas = { git = "https://github.com/Open-Athena/thalas", branch = "executor-extraction" }
 
 [[tool.uv.index]]
 name = "pytorch-cu128"
@@ -63,4 +63,7 @@ dev = [
 ]
 slurm = [
   "submitit>=1.5.1",
+]
+thalas = [
+  "thalas",
 ]

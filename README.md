@@ -2,8 +2,6 @@
 
 Biological Language Model data, training and inference pipeline prototypes.
 
-![Pipeline Architecture](docs/architecture.svg)
-
 ## Setup
 
 This project uses [uv](https://docs.astral.sh/uv/) for Python dependency management.
@@ -31,27 +29,24 @@ uv run pre-commit install
 
 ## Execution
 
-WIP
-
-TODO:
-
-- Add configuration docs
-- Explain handling failures
-- Discuss SLURM steps and storage for inputs/outputs
+These examples demonstrate how to run a pipeline using the [Marin execution framework](https://github.com/marin-community/marin/blob/main/docs/tutorials/executor-101.md) (extracted to [Thalas](https://github.com/Open-Athena/thalas)):
 
 ```bash
-export METAFLOW_RUN_MAX_WORKERS=1
-export PIPELINE_DIR=src/pipelines/plantcad2/evaluation
+# Activate the virtual environment
+source .venv/bin/activate
 
-# Execute a terminal flow
-uv run $PIPELINE_DIR/tasks/evolutionary_constraint/flow.py run
+# Set pipeline output directory
+export LOCAL_PREFIX="/tmp/evolutionary_constraint"
 
-# Execute a terminal flow with config overrides
-uv run $PIPELINE_DIR/tasks/evolutionary_constraint/flow.py run \
---overrides "tasks.evolutionary_constraint.output_dir=data/evolutionary_constraint_override"
+# Execute the evaluation pipeline
+python -m src.pipelines.plantcad2.evaluation.pipeline --local-prefix $LOCAL_PREFIX
 
-# Execute a parent flow composing terminal flows
-uv run $PIPELINE_DIR/flow.py run
+# Force re-run of failed steps
+python -m src.pipelines.plantcad2.evaluation.pipeline --local-prefix $LOCAL_PREFIX --force-run-failed
+
+# Clear all pipeline data and start fresh
+rm -rf $LOCAL_PREFIX
+python -m src.pipelines.plantcad2.evaluation.pipeline --local-prefix $LOCAL_PREFIX
 ```
 
 ## Storage
@@ -101,13 +96,4 @@ io.create_on_hub(internal_repo, private=False)  # Creates "plantcad/_dev_test-da
 
 with fs.open(internal_repo.url("data.txt"), "w") as f:
     f.write(content)
-```
-
-## Debugging
-
-Metaflow has no serial, local execution mode which makes debugging with `pdb` or `ipdb` difficult; see https://github.com/Netflix/metaflow/issues/89.  This utility below can be used to debug subprocesses, however, which provides access to a PDB debugging session through a local TCP socket.
-
-```python
-from src.debug import remote_pdb; remote_pdb(4444).set_trace()
-# Connect with this in another terminal: nc 127.0.0.1 4444
 ```

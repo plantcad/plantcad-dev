@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from functools import partial
+
 from pathlib import Path
 
 import numpy as np
@@ -26,7 +26,7 @@ from tqdm import tqdm
 
 from src.hub import load_model_for_masked_lm, load_tokenizer
 from src.pipelines.plantcad2.evaluation.data import SequenceDataset
-from src.execution.slurm import run_slurm_function, process_group
+
 
 logger = logging.getLogger(__name__)
 
@@ -36,17 +36,62 @@ def get_evaluation_config_path() -> str:
     return str(Path(__file__).parent / "configs" / "config.yaml")
 
 
-def _generate_logits_for_dataframe(
+def simulate_logits(df: pd.DataFrame) -> NDArray[np.floating]:
+    """Generate fake random logits for testing without GPU.
+
+    Parameters
+    ----------
+    df
+        DataFrame containing sequence data
+
+    Returns
+    -------
+    NDArray[np.floating]
+        Random probability matrix for nucleotides [A, C, G, T]
+    """
+    if len(df) == 0:
+        logger.warning("No data provided")
+        return np.array([])
+
+    num_samples = len(df)
+    logger.info(f"Generating fake logits for {num_samples} sequences")
+
+    # Generate random probabilities for A, C, G, T using Dirichlet distribution
+    np.random.seed(42)  # For reproducible results
+    logits_matrix = np.random.dirichlet([1, 1, 1, 1], size=num_samples)
+
+    return logits_matrix
+
+
+def generate_logits(
     df: pd.DataFrame,
     model_path: str,
     device: str | torch.device,
     token_idx: int,
     batch_size: int,
-    rank_info: str = "",
 ) -> NDArray[np.floating]:
-    """Core logits generation logic for a DataFrame partition."""
+    """Generate real logits using pre-trained model on single GPU.
+
+    Parameters
+    ----------
+    df
+        DataFrame containing sequence data
+    model_path
+        Hugging Face model identifier or local path
+    device
+        Device for running inference
+    token_idx
+        Index of the masked token position to score
+    batch_size
+        Batch size for the DataLoader
+
+    Returns
+    -------
+    NDArray[np.floating]
+        Probability matrix for nucleotides [A, C, G, T]
+    """
     if len(df) == 0:
-        logger.warning(f"No data for {rank_info}")
+        logger.warning("No data provided")
         return np.array([])
 
     model, tokenizer = _load_model_and_tokenizer(model_path=model_path, device=device)
@@ -68,8 +113,8 @@ def _generate_logits_for_dataframe(
     nucleotides = list("acgt")
     all_logits: list[NDArray[np.floating]] = []
 
-    desc = f"{rank_info} generating logits" if rank_info else "Generating logits"
-    for batch in tqdm(loader, desc=desc):
+    logger.info(f"Generating real logits for {len(df)} sequences")
+    for batch in tqdm(loader, desc="Generating logits"):
         cur_ids = batch["input_ids"].to(device)
         cur_ids = cur_ids.squeeze(1)
 
@@ -86,40 +131,6 @@ def _generate_logits_for_dataframe(
             all_logits.append(probs)
 
     return np.vstack(all_logits) if all_logits else np.array([])
-
-
-def _generate_logits_task(
-    dataset_path: Path,
-    output_dir: Path,
-    model_path: str,
-    device: str | torch.device,
-    token_idx: int,
-    batch_size: int,
-) -> tuple[Path, NDArray[np.floating]]:
-    """SLURM task for generating logits on a data partition."""
-    pg = process_group()
-    logger.info(f"SLURM task {pg.rank}/{pg.world_size}: generating logits")
-
-    df = pd.read_parquet(dataset_path)
-    # Partition data for this rank
-    df_partition = df.iloc[pg.rank :: pg.world_size]
-
-    logits_matrix = _generate_logits_for_dataframe(
-        df=df_partition,
-        model_path=model_path,
-        device=device,
-        token_idx=token_idx,
-        batch_size=batch_size,
-        rank_info=f"Rank {pg.rank}",
-    )
-
-    logits_path = output_dir / f"logits_rank_{pg.rank}.tsv"
-    if len(logits_matrix) > 0:
-        np.savetxt(logits_path, logits_matrix, delimiter="\t")
-
-    logger.info(f"Rank {pg.rank}: Generated logits for {len(logits_matrix)} sequences")
-
-    return logits_path, logits_matrix
 
 
 @dataclass
@@ -198,7 +209,7 @@ def load_and_downsample_dataset(
     repo_id: str,
     dataset_subdir: str,
     dataset_split: str,
-    output_dir: Path,
+    dataset_dir: Path,
     sample_size: int | None = None,
 ) -> tuple[Path, int]:
     """Load dataset from Hugging Face and optionally downsample.
@@ -211,7 +222,7 @@ def load_and_downsample_dataset(
         Subdirectory within the HF dataset repo (e.g., "Evolutionary_constraint", "Acceptor").
     dataset_split
         The dataset split to load (e.g., "train", "valid", "test").
-    output_dir
+    dataset_dir
         Directory to save the downsampled dataset.
     sample_size
         Number of samples to downsample to. If None, uses the full dataset.
@@ -236,7 +247,7 @@ def load_and_downsample_dataset(
         df = df.sample(n=sample_size, random_state=42).reset_index(drop=True)
         logger.info(f"Downsampled to: {len(df)} samples")
 
-    dataset_path = output_dir / f"downsampled_{dataset_split}.parquet"
+    dataset_path = dataset_dir / f"downsampled_{dataset_split}.parquet"
     df.to_parquet(dataset_path)
     logger.info(f"Saved downsampled dataset to: {dataset_path}")
 
@@ -250,11 +261,9 @@ def generate_model_logits(
     device: str | torch.device,
     token_idx: int,
     batch_size: int,
-    execution_mode: str = "local",
-    slurm_config: dict | None = None,
-    log_dir: Path | None = None,
+    simulation_mode: bool = True,
 ) -> tuple[Path, NDArray[np.floating]]:
-    """Generate logits using the pre-trained model with optional distributed execution.
+    """Generate logits using either fake random data or real model inference.
 
     Parameters
     ----------
@@ -265,35 +274,30 @@ def generate_model_logits(
     model_path
         Hugging Face model identifier or local path for the masked LM.
     device
-        Device for running inference.
+        Device for running inference (only used if simulation_mode=False).
     token_idx
         Index of the masked token position to score.
     batch_size
-        Batch size for the DataLoader.
-    execution_mode
-        Execution mode: "local" or "slurm". Defaults to "local".
-    slurm_config
-        SLURM configuration dict. Required if execution_mode is "slurm".
-    log_dir
-        Directory for SLURM job logs. Required if execution_mode is "slurm".
+        Batch size for the DataLoader (only used if simulation_mode=False).
+    simulation_mode
+        If True, generate fake random logits for testing. If False, use real model inference.
 
     Returns
     -------
     tuple[Path, NDArray[np.floating]]
         Tuple of (logits_path, logits_matrix).
     """
+    df = pd.read_parquet(dataset_path)
+    _validate_sequence_lengths(df)
 
-    logger.info(
-        f"Generating logits with pre-trained model using {execution_mode} execution"
-    )
+    logger.info(f"Processing {len(df)} sequences")
 
-    if execution_mode == "local":
-        df = pd.read_parquet(dataset_path)
-        _validate_sequence_lengths(df)
-
-        logger.info(f"Processing {len(df)} sequences")
-
-        logits_matrix = _generate_logits_for_dataframe(
+    if simulation_mode:
+        logger.info("Generating fake logits for testing (simulation_mode=True)")
+        logits_matrix = simulate_logits(df)
+    else:
+        logger.info("Generating real logits using pre-trained model")
+        logits_matrix = generate_logits(
             df=df,
             model_path=model_path,
             device=device,
@@ -301,64 +305,14 @@ def generate_model_logits(
             batch_size=batch_size,
         )
 
-        logits_path = output_dir / "logits.tsv"
-        np.savetxt(logits_path, logits_matrix, delimiter="\t")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    logits_path = output_dir / "logits.tsv"
+    np.savetxt(logits_path, logits_matrix, delimiter="\t")
 
-        logger.info(f"Generated logits for {len(logits_matrix)} sequences")
-        logger.info(f"Saved logits to: {logits_path}")
+    logger.info(f"Generated logits for {len(logits_matrix)} sequences")
+    logger.info(f"Saved logits to: {logits_path}")
 
-        return logits_path, logits_matrix
-
-    elif execution_mode == "slurm":
-        if slurm_config is None or log_dir is None:
-            raise ValueError(
-                "slurm_config and log_dir are required for SLURM execution"
-            )
-
-        # Create a partial function for SLURM execution
-        task_func = partial(
-            _generate_logits_task,
-            dataset_path=dataset_path,
-            output_dir=output_dir,
-            model_path=model_path,
-            device=device,
-            token_idx=token_idx,
-            batch_size=batch_size,
-        )
-
-        # Execute the task on SLURM
-        results = run_slurm_function(
-            task_func,
-            log_dir=log_dir,
-            partition=slurm_config["partition"],
-            timeout_min=slurm_config["timeout_min"],
-            nodes=slurm_config["nodes"],
-            tasks_per_node=slurm_config["tasks_per_node"],
-            cluster=slurm_config.get("cluster", "slurm"),
-        )
-
-        # Combine results from all ranks
-        all_logits = []
-        for logits_path, logits_matrix in results:
-            if len(logits_matrix) > 0:
-                all_logits.append(logits_matrix)
-
-        combined_logits = np.vstack(all_logits) if all_logits else np.array([])
-
-        # Save combined results
-        final_logits_path = output_dir / "logits.tsv"
-        if len(combined_logits) > 0:
-            np.savetxt(final_logits_path, combined_logits, delimiter="\t")
-
-        logger.info(f"Combined logits from all ranks: {len(combined_logits)} sequences")
-        logger.info(f"Saved combined logits to: {final_logits_path}")
-
-        return final_logits_path, combined_logits
-
-    else:
-        raise ValueError(
-            f"Invalid execution_mode: {execution_mode}. Must be 'local' or 'slurm'."
-        )
+    return logits_path, logits_matrix
 
 
 def compute_plantcad_scores(
@@ -406,6 +360,7 @@ def compute_plantcad_scores(
 
     df["plantcad_scores"] = scores
 
+    output_dir.mkdir(parents=True, exist_ok=True)
     scored_dataset_path = output_dir / "dataset_with_scores.parquet"
     df.to_parquet(scored_dataset_path)
 

@@ -1,5 +1,6 @@
 defaults:
-  device: "cuda:0"
+  device: "cuda"
+  simulation_mode: true  # Use fake random logits for testing; set to false for real model inference
 models:
   plantcad2:
     small:
@@ -22,29 +23,17 @@ paths:
   data_dir: data
 tasks:
   evolutionary_constraint:
-    model_path: ${models.plantcad2.small.path}
-    dataset_split: valid
-    dataset_subdir: Evolutionary_constraint
-    device: ${defaults.device}
-    sample_size: 1000
-    batch_size: 128
-    token_idx: 255
-    repo_id: ${datasets.evaluation.plantcad1.path}
-    output_dir: ${paths.data_dir}/evolutionary_constraint
-    execution_mode: local # or "slurm"
-    slurm_config:
-      partition: gh
-      nodes: 2
-      tasks_per_node: 1
-      timeout_min: 60
-  splice_acceptor:
-    model_path: ${models.plantcad2.small.path}
-    dataset_split: valid
-    dataset_subdir: Acceptor
-    device: ${defaults.device}
-    sample_size: 1000
-    batch_size: 128
-    token_idx: 255
-    repo_id: ${datasets.evaluation.plantcad1.path}
-    output_dir: ${paths.data_dir}/splice_acceptor
-    execution_mode: local
+    downsample_dataset:
+      dataset_split: valid
+      dataset_subdir: Evolutionary_constraint
+      sample_size: 1000
+      repo_id: ${datasets.evaluation.plantcad1.path}
+    generate_logits:
+      model_path: ${models.plantcad2.small.path}
+      device: ${defaults.device}
+      batch_size: 128
+      token_idx: 255
+      simulation_mode: ${defaults.simulation_mode}
+    generate_scores:
+      token_idx: 255
+    compute_roc: {}
