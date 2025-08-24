@@ -37,7 +37,7 @@ def downsample_dataset(config: DownsampleDatasetConfig) -> None:
 
     # Load and downsample dataset
     dataset_path, num_samples = load_and_downsample_dataset(
-        repo_id=config.repo_id,
+        dataset_path=config.dataset_path,
         dataset_subdir=config.dataset_subdir,
         dataset_split=config.dataset_split,
         dataset_dir=dataset_dir,
@@ -69,7 +69,7 @@ def generate_logits(config: GenerateLogitsConfig) -> None:
     dataset_path = Path(config.input_path) / pipeline_data["dataset_relpath"]
 
     # Use the new generate_model_logits function with simulation_mode
-    logits_path, _ = generate_model_logits(
+    generate_model_logits(
         dataset_path=dataset_path,
         output_dir=Path(config.output_path) / "logits",
         model_path=config.model_path,
@@ -85,6 +85,7 @@ def generate_logits(config: GenerateLogitsConfig) -> None:
         {
             "dataset_path": dataset_path,
             "logits_relpath": Path("logits") / "logits.tsv",
+            "token_idx": config.token_idx,
         }
     )
 
@@ -105,15 +106,17 @@ def generate_scores(config: GenerateScoresConfig) -> None:
     logits_path = Path(config.input_path) / pipeline_data["logits_relpath"]
     logits_matrix = np.loadtxt(logits_path, delimiter="\t")
 
+    token_idx = pipeline_data["token_idx"]
+
     # Get dataset path from pipeline_data (passed forward from generate_logits)
     # TODO: This is temporary - need proper way to access inputs from two steps upstream
     dataset_path = pipeline_data["dataset_path"]
 
-    scored_dataset_path, y_true, y_scores = compute_plantcad_scores(
+    _, y_true, y_scores = compute_plantcad_scores(
         dataset_path=dataset_path,
         logits_matrix=logits_matrix,
         output_dir=Path(config.output_path) / "scores",
-        token_idx=config.token_idx,
+        token_idx=token_idx,
     )
 
     # Update pipeline data
@@ -222,3 +225,6 @@ class EvolutionaryConstraintPipeline:
             ),
             description="Compute ROC AUC",
         )
+
+    def last_step(self) -> ExecutorStep:
+        return self.compute_roc()

@@ -16,7 +16,7 @@ dependencies = [
   "scikit-learn==1.7.1",
   "datasets==4.0.0",
   "tqdm==4.67.1",
-  "pydantic-settings==2.10.1",
+  "pydantic-settings>=2.8.1",
   "omegaconf>=2.3.0",
 ]
 

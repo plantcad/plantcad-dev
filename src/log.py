@@ -2,7 +2,7 @@ import logging
 
 
 def init_logging(
-    level: int = logging.INFO, format: str = "[%(levelname)s] %(message)s"
+    level: int = logging.INFO, format: str = "%(asctime)s - %(levelname)s - %(message)s"
 ) -> None:
     """
     Initialize logging configuration.
@@ -12,6 +12,6 @@ def init_logging(
     level : int, optional
         Logging level, by default logging.INFO
     format : str, optional
-        Log message format, by default "%(levelname)s %(message)s"
+        Log message format, by default "%(asctime)s - %(levelname)s - %(message)s"
     """
     logging.basicConfig(level=level, format=format)

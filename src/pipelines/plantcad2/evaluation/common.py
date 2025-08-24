@@ -206,7 +206,7 @@ def _validate_sequence_lengths(df: pd.DataFrame) -> int:
 
 
 def load_and_downsample_dataset(
-    repo_id: str,
+    dataset_path: str,
     dataset_subdir: str,
     dataset_split: str,
     dataset_dir: Path,
@@ -216,8 +216,8 @@ def load_and_downsample_dataset(
 
     Parameters
     ----------
-    repo_id
-        HuggingFace repository ID for the dataset.
+    dataset_path
+        HuggingFace repository ID or path for the dataset.
     dataset_subdir
         Subdirectory within the HF dataset repo (e.g., "Evolutionary_constraint", "Acceptor").
     dataset_split
@@ -236,7 +236,7 @@ def load_and_downsample_dataset(
     logger.info("Loading and downsampling dataset")
 
     data = load_dataset(
-        repo_id,
+        dataset_path,
         data_files={dataset_split: f"{dataset_subdir}/{dataset_split}.tsv"},
     )
     df = data[dataset_split].to_pandas()

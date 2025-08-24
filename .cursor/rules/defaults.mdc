@@ -12,8 +12,10 @@ alwaysApply: true
 
 ## Project
 - Manage all dependecies via `uv` and `pyproject.toml`
-- Default to `uv run` for execution
 - Use `uv run pre-commit` for linting
+
+## Execution
+- Unless instructed otherwise, execute all code using `source .venv/bin/activate` first, followed by relevant commands (do not use `uv run` by default)
 
 ## Coding
 - Use NumPy style docstrings

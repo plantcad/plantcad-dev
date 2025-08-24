@@ -35,18 +35,19 @@ These examples demonstrate how to run a pipeline using the [Marin execution fram
 # Activate the virtual environment
 source .venv/bin/activate
 
-# Set pipeline output directory
-export LOCAL_PREFIX="/tmp/evolutionary_constraint"
+CONFIG=src/pipelines/plantcad2/evaluation/configs/config.yaml
 
-# Execute the evaluation pipeline
-python -m src.pipelines.plantcad2.evaluation.pipeline --local-prefix $LOCAL_PREFIX
+# Execute the evaluation pipeline (prefix is defined in config file)
+python -m src.pipelines.plantcad2.evaluation.pipeline --config_path $CONFIG
 
 # Force re-run of failed steps
-python -m src.pipelines.plantcad2.evaluation.pipeline --local-prefix $LOCAL_PREFIX --force-run-failed
+python -m src.pipelines.plantcad2.evaluation.pipeline \
+  --config_path $CONFIG --executor.force_run_failed
 
-# Clear all pipeline data and start fresh
-rm -rf $LOCAL_PREFIX
-python -m src.pipelines.plantcad2.evaluation.pipeline --local-prefix $LOCAL_PREFIX
+# Clear all pipeline data and start fresh (extract prefix from config)
+PREFIX=$(yq -r '.executor.prefix' $CONFIG)
+rm -rf $PREFIX
+python -m src.pipelines.plantcad2.evaluation.pipeline --config_path $CONFIG
 ```
 
 ## Storage
