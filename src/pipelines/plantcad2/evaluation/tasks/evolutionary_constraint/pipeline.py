@@ -5,6 +5,7 @@ import pickle
 from pathlib import Path
 from dataclasses import replace
 import numpy as np
+import ray
 from thalas.execution import ExecutorStep, output_path_of, this_output_path
 
 from src.pipelines.plantcad2.evaluation.config import (
@@ -189,14 +190,18 @@ class EvolutionaryConstraintPipeline:
 
     def generate_logits(self) -> ExecutorStep:
         """Generate logits using the pre-trained model."""
+        config = replace(
+            self.steps_config.generate_logits,
+            input_path=output_path_of(self.downsample_dataset()),
+            output_path=this_output_path(),
+        )
+        func = generate_logits
+        if not config.simulation_mode:
+            func = ray.remote(num_gpus=1)(generate_logits)
         return ExecutorStep(
             name="evolutionary_generate_logits",
-            fn=generate_logits,
-            config=replace(
-                self.steps_config.generate_logits,
-                input_path=output_path_of(self.downsample_dataset()),
-                output_path=this_output_path(),
-            ),
+            fn=func,
+            config=config,
             description="Generate model logits",
         )
 

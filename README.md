@@ -72,7 +72,7 @@ This example shows how to create a Lambda cluster and run a pipeline on it.
 # echo "api_key = <key>" >> ~/.lambda_cloud/lambda_keys
 sky check -v # Ensure that Lambda is detected as an available cloud
 
-CONFIG_PATH=src/pipelines/plantcad2/evaluation/configs/
+CONFIG_PATH=src/pipelines/plantcad2/evaluation/configs
 
 # Launch a dev cluster; see:
 # - https://docs.skypilot.co/en/latest/reference/cli.html
@@ -93,6 +93,10 @@ sky launch -c biolm-dev $CONFIG_PATH/cluster.sky.yaml --env HUGGING_FACE_HUB_TOK
 # for every `exec` and `launch` command; see:
 # https://docs.skypilot.co/en/latest/examples/syncing-code-artifacts.html#sync-code-from-a-local-directory-or-a-git-repository
 sky exec biolm-dev $CONFIG_PATH/task.sky.yaml --env HUGGING_FACE_HUB_TOKEN
+
+# Add arbitrary arguments to the task execution
+ARGS="--executor.force_run_failed=true" sky exec sky-c43e-eczech $CONFIG_PATH/task.sky.yaml \
+  --env HUGGING_FACE_HUB_TOKEN --env ARGS
 ```
 
 ## Storage
