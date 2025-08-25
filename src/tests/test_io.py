@@ -86,6 +86,13 @@ class TestHfRepo:
         assert repo.internal is False
         assert repo.url() == expected_url
 
+    def test_from_repo_id_strips_whitespace(self):
+        """Leading and trailing whitespace in repo_id should be ignored."""
+        repo = HfRepo.from_repo_id("  org / repo  ")
+        assert repo.entity == "org"
+        assert repo.name == "repo"
+        assert repo.path() == "datasets/org/repo"
+
     @pytest.mark.parametrize(
         "invalid_repo_id",
         [
