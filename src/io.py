@@ -156,13 +156,19 @@ class HfRepo:
         >>> model_repo.url()
         'hf://huggingface/CodeBERTa-small-v1'
         """
+        repo_id = repo_id.strip()
         parts = repo_id.split("/")
-        if len(parts) != 2 or not parts[0] or not parts[1]:
+        if len(parts) != 2:
             raise ValueError(
                 f"Invalid repository ID: '{repo_id}'. Expected format: 'entity/name'"
             )
 
-        entity, name = parts
+        entity, name = (part.strip() for part in parts)
+        if not entity or not name:
+            raise ValueError(
+                f"Invalid repository ID: '{repo_id}'. Expected format: 'entity/name'"
+            )
+
         return HfRepo(entity=entity, name=name, type=type, internal=False)
 
 
