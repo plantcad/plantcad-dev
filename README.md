@@ -18,12 +18,16 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Create environment
 # ------------------
 uv venv --python 3.12
-uv sync # Install core dependencies (namely torch) prior to mamba
-uv sync --extra mamba
 
-# Install dev tools
-# -----------------
-uv sync --extra mamba --group dev
+# Install dependencies - choose CPU or GPU
+# -----------------------------------------
+# For CPU-only installation:
+uv sync --extra cpu --group dev
+
+# For GPU (CUDA 12.8) installation:
+uv sync --extra gpu --extra mamba --group dev  # Mamba requires CUDA
+
+# Install pre-commit hooks
 uv run pre-commit install
 ```
 
