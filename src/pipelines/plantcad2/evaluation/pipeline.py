@@ -5,7 +5,7 @@ from pathlib import Path
 import pickle
 import draccus
 from thalas.execution import ExecutorStep
-
+from src import io
 from src.exec import executor_main
 from src.pipelines.plantcad2.evaluation.config import PipelineConfig
 from src.pipelines.plantcad2.evaluation.tasks.evolutionary_constraint.pipeline import (
@@ -37,6 +37,16 @@ def main():
     logger.info("Starting evaluation pipeline")
 
     cfg = draccus.parse(config_class=PipelineConfig)
+
+    if cfg.executor.prefix is not None:
+        if cfg.executor.prefix.startswith("hf://"):
+            import pyarrow as pa
+
+            pa.fs.FSSpecHandler(io.filesystem())
+            hf_repo = io.HfRepo.from_url(cfg.executor.prefix)
+            logger.info(f"Creating repository on Hugging Face: {hf_repo.url()}")
+            io.create_on_hub(hf_repo, exist_ok=True)
+            logger.info(f"Repository created: {hf_repo.url()}")
 
     pipeline = EvaluationPipeline(cfg)
 

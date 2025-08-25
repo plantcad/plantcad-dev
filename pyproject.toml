@@ -13,12 +13,17 @@ dependencies = [
   "pandas==2.3.1",
   "numpy==2.3.2",
   "scikit-learn==1.7.1",
+  "draccus==0.11.5",
   "datasets==4.0.0",
   "tqdm==4.67.1",
   "pydantic==2.11.7",
+  "skypilot[lambda]>=0.10",
+  "thalas==0.1.0",
+  "ray[default,client]==2.45",
 ]
 
 [project.optional-dependencies]
+# See here for cpu/gpu groups: https://github.com/astral-sh/uv/issues/10590
 cpu = [
   "torch==2.7.1",
 ]
@@ -35,8 +40,8 @@ packages = ["src"]
 
 [tool.uv.sources]
 torch = [
-  { index = "pytorch-cpu", marker = "extra == 'cpu'" },
-  { index = "pytorch-cu128", marker = "extra != 'cpu'" },
+  { index = "pytorch-cpu", extra = "cpu" },
+  { index = "pytorch-cu128", extra = "gpu" },
 ]
 causal-conv1d = { git = "https://github.com/Dao-AILab/causal-conv1d", tag = "v1.5.0.post8" }
 mamba-ssm = { git = "https://github.com/state-spaces/mamba", tag = "v2.2.4" }
@@ -54,6 +59,12 @@ explicit = true                                # Use this index only for pytorch
 
 [tool.uv]
 no-build-isolation-package = ["mamba-ssm", "causal-conv1d"]
+conflicts = [
+  [
+    { extra = "cpu" },
+    { extra = "gpu" },
+  ],
+]
 
 [[tool.uv.dependency-metadata]]
 name = "mamba-ssm"
@@ -75,7 +86,4 @@ dev = [
 ]
 slurm = [
   "submitit>=1.5.1",
-]
-thalas = [
-  "thalas",
 ]

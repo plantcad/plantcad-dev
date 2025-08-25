@@ -22,7 +22,7 @@ from datasets import load_dataset
 from numpy.typing import NDArray
 from sklearn.metrics import auc, roc_curve
 from torch.utils.data import DataLoader
-from tqdm import tqdm
+
 
 from src.hub import load_model_for_masked_lm, load_tokenizer
 from src.pipelines.plantcad2.evaluation.data import SequenceDataset
@@ -94,6 +94,7 @@ def generate_logits(
         logger.warning("No data provided")
         return np.array([])
 
+    logger.info(f"Loading model and tokenizer from {model_path} on {device}")
     model, tokenizer = _load_model_and_tokenizer(model_path=model_path, device=device)
 
     sequences = df["sequences"].tolist()
@@ -113,8 +114,13 @@ def generate_logits(
     nucleotides = list("acgt")
     all_logits: list[NDArray[np.floating]] = []
 
+    total_batches = len(loader)
+    log_interval = max(1, total_batches // 20)  # Log every 5% of batches
+
     logger.info(f"Generating real logits for {len(df)} sequences")
-    for batch in tqdm(loader, desc="Generating logits"):
+    logger.info(f"Processing {total_batches} batches with batch size {batch_size}")
+
+    for batch_idx, batch in enumerate(loader):
         cur_ids = batch["input_ids"].to(device)
         cur_ids = cur_ids.squeeze(1)
 
@@ -129,6 +135,13 @@ def generate_logits(
             ]
             probs = torch.nn.functional.softmax(logits.cpu(), dim=1).numpy()
             all_logits.append(probs)
+
+        # Log progress every 5% of batches
+        if batch_idx % log_interval == 0 or batch_idx == total_batches - 1:
+            progress_pct = (batch_idx + 1) / total_batches * 100
+            logger.info(
+                f"Processed batch {batch_idx + 1}/{total_batches} ({progress_pct:.1f}%)"
+            )
 
     return np.vstack(all_logits) if all_logits else np.array([])
 
@@ -262,7 +275,9 @@ def generate_model_logits(
     token_idx: int,
     batch_size: int,
     simulation_mode: bool = True,
-) -> tuple[Path, NDArray[np.floating]]:
+    worker_id: int | None = None,
+    num_workers: int | None = None,
+) -> Path:
     """Generate logits using either fake random data or real model inference.
 
     Parameters
@@ -281,11 +296,15 @@ def generate_model_logits(
         Batch size for the DataLoader (only used if simulation_mode=False).
     simulation_mode
         If True, generate fake random logits for testing. If False, use real model inference.
+    worker_id
+        Worker ID for distributed processing (when None, processes all data).
+    num_workers
+        Total number of workers for distributed processing.
 
     Returns
     -------
-    tuple[Path, NDArray[np.floating]]
-        Tuple of (logits_path, logits_matrix).
+    Path
+        Path to the logits file written under output_dir.
     """
     df = pd.read_parquet(dataset_path)
     _validate_sequence_lengths(df)
@@ -295,8 +314,20 @@ def generate_model_logits(
     if simulation_mode:
         logger.info("Generating fake logits for testing (simulation_mode=True)")
         logits_matrix = simulate_logits(df)
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        logits_path = output_dir / "logits.tsv"
+        np.savetxt(logits_path, logits_matrix, delimiter="\t")
     else:
         logger.info("Generating real logits using pre-trained model")
+
+        # Filter data for distributed processing
+        if worker_id is not None and num_workers is not None:
+            df = df.iloc[worker_id::num_workers]
+            logger.info(
+                f"Worker {worker_id}/{num_workers} processing {len(df)} sequences"
+            )
+
         logits_matrix = generate_logits(
             df=df,
             model_path=model_path,
@@ -305,14 +336,17 @@ def generate_model_logits(
             batch_size=batch_size,
         )
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    logits_path = output_dir / "logits.tsv"
-    np.savetxt(logits_path, logits_matrix, delimiter="\t")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        if worker_id is not None:
+            logits_path = output_dir / f"logits_{worker_id:05d}.tsv"
+        else:
+            logits_path = output_dir / "logits.tsv"
+        np.savetxt(logits_path, logits_matrix, delimiter="\t")
 
     logger.info(f"Generated logits for {len(logits_matrix)} sequences")
     logger.info(f"Saved logits to: {logits_path}")
 
-    return logits_path, logits_matrix
+    return logits_path
 
 
 def compute_plantcad_scores(

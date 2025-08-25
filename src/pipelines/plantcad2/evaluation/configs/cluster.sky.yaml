@@ -1,0 +1,15 @@
+# See: https://docs.skypilot.co/en/v0.9.3/reference/yaml-spec.html
+num_nodes: 2
+resources:
+  cloud: lambda
+  # See:
+  # - https://docs.skypilot.co/en/v0.9.3/compute/gpus.html
+  # - https://docs.skypilot.co/en/latest/examples/auto-failover.html#multiple-candidate-gpus
+  accelerators: {A10:1, A100:1}
+  disk_size: 100
+
+workdir: .
+
+setup: |
+  set -ex
+  uv sync --extra gpu --extra mamba
