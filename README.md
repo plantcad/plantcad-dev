@@ -17,7 +17,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Create environment
 # ------------------
-uv venv --python 3.12
+uv venv
 
 # Install dependencies - choose CPU or GPU
 # -----------------------------------------
@@ -33,6 +33,8 @@ uv run pre-commit install
 
 ## Execution
 
+### Local
+
 These examples demonstrate how to run a pipeline using the [Marin execution framework](https://github.com/marin-community/marin/blob/main/docs/tutorials/executor-101.md) (extracted to [Thalas](https://github.com/Open-Athena/thalas)):
 
 ```bash
@@ -46,12 +48,51 @@ python -m src.pipelines.plantcad2.evaluation.pipeline --config_path $CONFIG
 
 # Force re-run of failed steps
 python -m src.pipelines.plantcad2.evaluation.pipeline \
-  --config_path $CONFIG --executor.force_run_failed
+  --config_path $CONFIG --executor.force_run_failed true
 
 # Clear all pipeline data and start fresh (extract prefix from config)
 PREFIX=$(yq -r '.executor.prefix' $CONFIG)
 rm -rf $PREFIX
 python -m src.pipelines.plantcad2.evaluation.pipeline --config_path $CONFIG
+
+# Run the pipeline without "simulation mode" (requires a GPU when false)
+python -m src.pipelines.plantcad2.evaluation.pipeline \
+  --config_path $CONFIG \
+  --tasks.evolutionary_constraint.generate_logits.simulate_mode false \
+  --executor.force_run_failed true
+```
+
+### Remote (Lambda)
+
+This example shows how to create a Lambda cluster and run a pipeline on it.
+
+```bash
+# Create Lambda API key at https://cloud.lambda.ai/api-keys/cloud-api
+# and add to ~/.lambda_cloud/credentials.json:
+# echo "api_key = <key>" >> ~/.lambda_cloud/lambda_keys
+sky check -v # Ensure that Lambda is detected as an available cloud
+
+CONFIG_PATH=src/pipelines/plantcad2/evaluation/configs/
+
+# Launch a dev cluster; see:
+# - https://docs.skypilot.co/en/latest/reference/cli.html
+# - https://docs.skypilot.co/en/latest/reference/yaml-spec.html
+sky launch -c biolm-dev --num-nodes 1 --gpus "A100:1" --disk-size 100 --workdir .
+# Alternatively, use the pipeline YAML config:
+sky launch -c biolm-dev $CONFIG_PATH/cluster.sky.yaml --env HUGGING_FACE_HUB_TOKEN
+# On successful completion, you will see the following:
+# 📋 Useful Commands
+# Cluster name: biolm-dev
+# ├── To log into the head VM:	ssh biolm-dev
+# ├── To submit a job:		sky exec biolm-dev yaml_file
+# ├── To stop the cluster:	sky stop biolm-dev
+# └── To teardown the cluster:	sky down biolm-dev
+
+# Submit a job to the cluster
+# NOTE: code from the working directory is synced to the cluster
+# for every `exec` and `launch` command; see:
+# https://docs.skypilot.co/en/latest/examples/syncing-code-artifacts.html#sync-code-from-a-local-directory-or-a-git-repository
+sky exec biolm-dev $CONFIG_PATH/task.sky.yaml --env HUGGING_FACE_HUB_TOKEN
 ```
 
 ## Storage
