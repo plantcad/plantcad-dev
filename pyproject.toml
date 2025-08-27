@@ -19,6 +19,7 @@ dependencies = [
   "pydantic==2.11.7",
   "skypilot[lambda]>=0.10",
   "thalas==0.1.0",
+  "ray[default,client]==2.45",
 ]
 
 [project.optional-dependencies]

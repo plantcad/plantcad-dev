@@ -99,6 +99,23 @@ ARGS="--executor.force_run_failed=true" sky exec sky-c43e-eczech $CONFIG_PATH/ta
   --env HUGGING_FACE_HUB_TOKEN --env ARGS
 ```
 
+## Ray
+
+Both SkyPilot and Thalas require Ray, so two separate Ray clusters are running on the Lamba cluster when using remote execution.  Here are some more details on how to monitor and interact these clusters:
+
+
+```bash
+# View the ray dashboard port to your local machine
+ssh -L 8365:localhost:8365 biolm-dev -N
+open http://localhost:8365
+
+# Kill Ray processes for one of the clusters; e.g. the non-SkyPilot cluster in this case
+# TODO: Find a better way to do this since Ray has no systemd (or similar) support
+GCS_PORT=6479 ps aux | grep ray \
+  | grep -E "(--gcs_server_port=$GCS_PORT|--gcs-address=.*:$GCS_PORT)" \
+  | awk '{print $2}' | xargs kill -9
+```
+
 ## Storage
 
 Shared storage is currently supported via Hugging Face. See the [Hugging Face Filesystem API](https://huggingface.co/docs/huggingface_hub/main/en/package_reference/hf_file_system) docs for more details.

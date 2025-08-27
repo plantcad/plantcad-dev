@@ -6,7 +6,12 @@ from typing import Literal
 from src import HF_ENTITY
 
 RepoType = Literal["space", "dataset", "model"]
-"""Hugging Face repository type; see https://huggingface.co/docs/huggingface_hub/main/en/guides/hf_file_system#integrations"""
+""" Hugging Face repository type; see:
+- https://huggingface.co/docs/huggingface_hub/main/en/guides/hf_file_system#integrations
+- https://github.com/huggingface/huggingface_hub/blob/main/src/huggingface_hub/constants.py#L104-L106
+"""
+
+INTERNAL_PREFIX = "_dev_"
 
 
 @dataclass
@@ -14,14 +19,17 @@ class HfRepo:
     """Represents a Hugging Face Hub repository with convenient path and URL generation.
 
     This class provides a structured way to work with Hugging Face repositories,
-    generating proper paths and fsspec-compatible URLs for use with HfFileSystem.
+    generating paths and fsspec-compatible URLs for use with HfFileSystem. It is similar to
+    `RepoUrl` from the HfApi but supports internal naming conventions as well as parsing
+    of repo names from repo owners; see:
+    https://github.com/huggingface/huggingface_hub/blob/main/src/huggingface_hub/hf_api.py#L536
 
     Attributes
     ----------
     entity : str
-        The Hugging Face organization or username
+        Hugging Face organization or username
     name : str
-        The repository name
+        Repository name
     type : RepoType
         Repository type ("dataset", "model", or "space")
     internal : bool
@@ -54,7 +62,7 @@ class HfRepo:
         >>> repo_internal.to_repo_id()
         'my-org/_dev_dataset'
         """
-        name = f"_dev_{self.name}" if self.internal else self.name
+        name = f"{INTERNAL_PREFIX}{self.name}" if self.internal else self.name
         return f"{self.entity}/{name}"
 
     def path(self, *path: str) -> str:
@@ -80,7 +88,7 @@ class HfRepo:
         >>> repo.path("data", "train.csv")
         'my-org/_dev_dataset/data/train.csv'
         """
-        name = f"_dev_{self.name}" if self.internal else self.name
+        name = f"{INTERNAL_PREFIX}{self.name}" if self.internal else self.name
         # Repos of type "model" require no path prefix; dataset and space do
         # Map singular types to plural path prefixes
         type_to_prefix = {"dataset": "datasets", "space": "spaces"}
@@ -116,6 +124,40 @@ class HfRepo:
         >>> df = pd.read_csv(repo.url("data.csv"))
         """
         return f"hf://{self.path(*path)}"
+
+    @staticmethod
+    def _validate_and_parse_repo_id(repo_id: str) -> tuple[str, str, bool]:
+        """Validate and parse a repository ID into entity and name components.
+
+        Parameters
+        ----------
+        repo_id : str
+            Repository ID in the format "entity/name"
+
+        Returns
+        -------
+        tuple[str, str, bool]
+            A tuple of (entity, name, internal) where internal indicates if the
+            repository uses the internal naming convention
+
+        Raises
+        ------
+        ValueError
+            If repo_id doesn't contain exactly one slash or has empty components
+        """
+        parts = repo_id.split("/")
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            raise ValueError(
+                f"Invalid repository ID: '{repo_id}'. Expected format: 'entity/name'"
+            )
+
+        entity, name = parts[0], parts[1]
+        internal = name.startswith(INTERNAL_PREFIX)
+        # Strip internal prefix from name if present, since the internal flag will handle it
+        if internal:
+            name = name.removeprefix(INTERNAL_PREFIX)
+
+        return entity, name, internal
 
     @staticmethod
     def from_repo_id(repo_id: str, *, type: RepoType = "dataset") -> "HfRepo":
@@ -156,14 +198,67 @@ class HfRepo:
         >>> model_repo.url()
         'hf://huggingface/CodeBERTa-small-v1'
         """
-        parts = repo_id.split("/")
-        if len(parts) != 2 or not parts[0] or not parts[1]:
-            raise ValueError(
-                f"Invalid repository ID: '{repo_id}'. Expected format: 'entity/name'"
-            )
+        entity, name, internal = HfRepo._validate_and_parse_repo_id(repo_id)
+        return HfRepo(entity=entity, name=name, type=type, internal=internal)
 
-        entity, name = parts
-        return HfRepo(entity=entity, name=name, type=type, internal=False)
+    @staticmethod
+    def from_url(url: str) -> "HfRepo":
+        """Create an HfRepo instance from a repository URL.
+
+        This method uses RepoUrl from huggingface_hub to parse repository URLs
+        and extract the necessary components to create an HfRepo instance.
+
+        Parameters
+        ----------
+        url : str
+            Repository URL (e.g., "https://huggingface.co/org/repo-name" or
+            "hf://datasets/org/repo-name")
+
+        Returns
+        -------
+        HfRepo
+            An HfRepo instance with internal=False
+
+        Raises
+        ------
+        ValueError
+            If the URL is invalid or cannot be parsed
+
+        Examples
+        --------
+        >>> repo = HfRepo.from_url("https://huggingface.co/microsoft/DialoGPT-medium")
+        >>> repo.entity
+        'microsoft'
+        >>> repo.name
+        'DialoGPT-medium'
+        >>> repo.type
+        'model'
+        >>> repo.internal
+        False
+
+        >>> dataset_repo = HfRepo.from_url("hf://datasets/huggingface/squad")
+        >>> dataset_repo.type
+        'dataset'
+
+        >>> space_repo = HfRepo.from_url(
+        ...     "https://huggingface.co/spaces/gradio/calculator"
+        ... )
+        >>> space_repo.type
+        'space'
+        """
+        try:
+            repo_url = RepoUrl(url)
+            entity, name, internal = HfRepo._validate_and_parse_repo_id(
+                repo_url.repo_id
+            )
+            return HfRepo(
+                entity=entity,
+                name=name,
+                type=repo_url.repo_type,
+                internal=internal,
+            )
+        except Exception as e:
+            raise ValueError(f"Failed to parse repository URL '{url}': {e}") from e
 
 
 def hf_internal_repo(

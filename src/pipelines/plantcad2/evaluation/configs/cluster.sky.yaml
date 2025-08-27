@@ -1,5 +1,5 @@
 # See: https://docs.skypilot.co/en/v0.9.3/reference/yaml-spec.html
-num_nodes: 1
+num_nodes: 2
 resources:
   cloud: lambda
   # See:
