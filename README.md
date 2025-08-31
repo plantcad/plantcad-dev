@@ -99,6 +99,26 @@ ARGS="--executor.force_run_failed=true" sky exec sky-c43e-eczech $CONFIG_PATH/ta
   --env HUGGING_FACE_HUB_TOKEN --env ARGS
 ```
 
+### Adding dependencies
+
+To add new dependencies in a running cluster, note that you can simply run the cluster launch command again.  SkyPilot will recognize the cluster exists and then issue the same setup commands to all the nodes.  In this case, those commands include a `uv sync`.  I.e. you can do this:
+
+```bash
+uv add universal-pathlib==0.2.6
+sky launch -c biolm-dev $CONFIG_PATH/cluster.sky.yaml --env HUGGING_FACE_HUB_TOKEN
+# ...
+# └── Job started. Streaming logs... (Ctrl-C to exit log streaming; job will not be killed)
+# (setup pid=4016) + uv sync --extra gpu --extra mamba
+# (setup pid=5650, ip=10.19.95.95) + uv sync --extra gpu --extra mamba
+# ...
+# (setup pid=4016) Installed 2 packages in 0.59ms
+# (setup pid=4016)  ~ biolm-demo==0.1.0 (from file:///home/ubuntu/sky_workdir)
+# (setup pid=4016)  + universal-pathlib==0.2.6s
+# (setup pid=5650, ip=10.19.95.95) Installed 2 packages in 0.58ms
+# (setup pid=5650, ip=10.19.95.95)  ~ biolm-demo==0.1.0 (from file:///home/ubuntu/sky_workdir)
+# (setup pid=5650, ip=10.19.95.95)  + universal-pathlib==0.2.6
+```
+
 ## Ray
 
 Both SkyPilot and Thalas require Ray, so two separate Ray clusters are running on the Lamba cluster when using remote execution.  Here are some more details on how to monitor and interact these clusters:
@@ -115,6 +135,7 @@ GCS_PORT=6479 ps aux | grep ray \
   | grep -E "(--gcs_server_port=$GCS_PORT|--gcs-address=.*:$GCS_PORT)" \
   | awk '{print $2}' | xargs kill -9
 ```
+
 
 ## Storage
 
@@ -163,4 +184,17 @@ io.create_on_hub(internal_repo, private=False)  # Creates "plantcad/_dev_test-da
 
 with fs.open(internal_repo.url("data.txt"), "w") as f:
     f.write(content)
+```
+
+
+### Deleting data
+
+When running Thalas pipelines, it is common to need to clear the paths used for a pipeline during development, or to delete data for a specific step.  Here are some examples:
+
+```bash
+# Clear all data within the dataset (without deleting it entirely)
+hf repo-files delete --repo-type dataset plantcad/_dev_biolm_demo '*'
+
+# Clear all data for a specific step
+hf repo-files delete --repo-type dataset plantcad/_dev_biolm_demo evolutionary_downsample_dataset-be132f
 ```

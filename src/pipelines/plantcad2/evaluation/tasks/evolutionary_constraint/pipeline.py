@@ -2,10 +2,11 @@
 
 import logging
 import pickle
-from pathlib import Path
 from dataclasses import replace
 import numpy as np
+import pandas as pd
 import ray
+from upath import UPath
 from thalas.execution import ExecutorStep, output_path_of, this_output_path
 
 from src.pipelines.plantcad2.evaluation.config import (
@@ -21,8 +22,9 @@ from src.pipelines.plantcad2.evaluation.common import (
     load_and_downsample_dataset,
     generate_model_logits,
 )
+from src.io import open_file
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ray")
 
 
 def downsample_dataset(config: DownsampleDatasetConfig) -> None:
@@ -31,17 +33,14 @@ def downsample_dataset(config: DownsampleDatasetConfig) -> None:
     logger.info(f"Loaded task configuration:\n{config}")
 
     # Setup dataset directory using executor-managed output path
-    dataset_dir = Path(config.output_path) / "dataset"
-    dataset_dir.mkdir(parents=True, exist_ok=True)
-
-    logger.info(f"Dataset directory: {dataset_dir}")
+    output_path = UPath(config.output_path)
 
     # Load and downsample dataset
     dataset_path, num_samples = load_and_downsample_dataset(
         dataset_path=config.dataset_path,
         dataset_subdir=config.dataset_subdir,
         dataset_split=config.dataset_split,
-        dataset_dir=dataset_dir,
+        dataset_dir=output_path / "dataset",
         sample_size=config.sample_size,
     )
 
@@ -50,12 +49,9 @@ def downsample_dataset(config: DownsampleDatasetConfig) -> None:
         "config": config,
         "num_samples": num_samples,
         "dataset_filename": dataset_path.name,
-        "dataset_relpath": Path("dataset") / dataset_path.name,
+        "dataset_relpath": dataset_path.relative_to(output_path),
     }
-
-    output_path = Path(config.output_path) / "pipeline_data"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "wb") as f:
+    with open_file(output_path / "pipeline_data", "wb") as f:
         pickle.dump(pipeline_data, f)
 
 
@@ -63,17 +59,20 @@ def generate_logits(config: GenerateLogitsConfig) -> None:
     """Generate logits using either fake random data or real model inference."""
 
     # Load pipeline data from previous step
-    with open(Path(config.input_path) / "pipeline_data", "rb") as f:
+    with open_file(UPath(config.input_path) / "pipeline_data", "rb") as f:
         pipeline_data = pickle.load(f)
 
     # Construct dataset path from the previous step's output
-    dataset_path = Path(config.input_path) / pipeline_data["dataset_relpath"]
+    dataset_path = UPath(config.input_path) / pipeline_data["dataset_relpath"]
 
-    logits_output_dir = Path(config.output_path) / "logits"
+    output_path = UPath(config.output_path)
+
+    # Set output path for this step
+    logits_output_dir = output_path / "logits"
 
     # Use the new generate_model_logits function with simulation_mode
     if config.simulation_mode:
-        generate_model_logits(
+        logits_path = generate_model_logits(
             dataset_path=dataset_path,
             output_dir=logits_output_dir,
             model_path=config.model_path,
@@ -106,53 +105,52 @@ def generate_logits(config: GenerateLogitsConfig) -> None:
         results = ray.get(futures)
 
         # Combine all worker output files into single logits.tsv
-        logits_output_dir.mkdir(parents=True, exist_ok=True)
         combined_logits = []
 
         # Load and combine logits from all worker files
         for worker_file in results:
             if worker_file.exists():
-                worker_logits = np.loadtxt(worker_file, delimiter="\t")
-                if len(worker_logits.shape) == 1:
-                    worker_logits = worker_logits.reshape(1, -1)
+                worker_logits = pd.read_csv(worker_file, sep="\t", header=None).values
                 combined_logits.append(worker_logits)
 
         if combined_logits:
             final_logits = np.vstack(combined_logits)
-            final_logits_path = logits_output_dir / "logits.tsv"
-            np.savetxt(final_logits_path, final_logits, delimiter="\t")
+            logits_path = logits_output_dir / "logits.tsv"
+            pd.DataFrame(final_logits).to_csv(
+                logits_path, sep="\t", header=False, index=False
+            )
             logger.info(
-                f"Combined {len(combined_logits)} worker outputs into {final_logits_path}"
+                f"Combined {len(combined_logits)} worker outputs into {logits_path}"
             )
         else:
-            logger.warning("No worker outputs found to combine")
+            raise ValueError("No worker outputs found to combine")
 
     # TODO: Figure out the correct way to fetch inputs from two steps upstream
     # For now, pass the dataset_path forward in pipeline_data
     pipeline_data.update(
         {
             "dataset_path": dataset_path,
-            "logits_relpath": Path("logits") / "logits.tsv",
+            "logits_relpath": logits_path.relative_to(output_path),
             "token_idx": config.token_idx,
         }
     )
 
     # Save updated pipeline data
-    output_path = Path(config.output_path) / "pipeline_data"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "wb") as f:
+    with open_file(output_path / "pipeline_data", "wb") as f:
         pickle.dump(pipeline_data, f)
 
 
 def generate_scores(config: GenerateScoresConfig) -> None:
     """Generate scores for plantcad evaluation."""
     # Load pipeline data from previous step
-    with open(Path(config.input_path) / "pipeline_data", "rb") as f:
+    with open_file(UPath(config.input_path) / "pipeline_data", "rb") as f:
         pipeline_data = pickle.load(f)
 
+    output_path = UPath(config.output_path)
+
     # Construct logits path from the previous step's output
-    logits_path = Path(config.input_path) / pipeline_data["logits_relpath"]
-    logits_matrix = np.loadtxt(logits_path, delimiter="\t")
+    logits_path = UPath(config.input_path) / pipeline_data["logits_relpath"]
+    logits_matrix = pd.read_csv(logits_path, sep="\t", header=None).values
 
     token_idx = pipeline_data["token_idx"]
 
@@ -163,7 +161,7 @@ def generate_scores(config: GenerateScoresConfig) -> None:
     _, y_true, y_scores = compute_plantcad_scores(
         dataset_path=dataset_path,
         logits_matrix=logits_matrix,
-        output_dir=Path(config.output_path) / "scores",
+        output_dir=output_path / "scores",
         token_idx=token_idx,
     )
 
@@ -176,16 +174,14 @@ def generate_scores(config: GenerateScoresConfig) -> None:
     )
 
     # Save updated pipeline data
-    output_path = Path(config.output_path) / "pipeline_data"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "wb") as f:
+    with open_file(output_path / "pipeline_data", "wb") as f:
         pickle.dump(pipeline_data, f)
 
 
 def compute_roc(config: ComputeRocConfig) -> None:
     """Compute and print ROC AUC score."""
     # Load pipeline data from previous step
-    with open(Path(config.input_path) / "pipeline_data", "rb") as f:
+    with open_file(UPath(config.input_path) / "pipeline_data", "rb") as f:
         pipeline_data = pickle.load(f)
 
     results = compute_roc_auc(pipeline_data["y_true"], pipeline_data["y_scores"])
@@ -204,9 +200,7 @@ def compute_roc(config: ComputeRocConfig) -> None:
     logger.info(f"Results saved to: {config.output_path}")
 
     # Save final pipeline data
-    output_path = Path(config.output_path) / "pipeline_data"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "wb") as f:
+    with open_file(UPath(config.output_path) / "pipeline_data", "wb") as f:
         pickle.dump(pipeline_data, f)
 
 

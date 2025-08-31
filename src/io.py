@@ -1,7 +1,10 @@
+import logging
+import time
 from huggingface_hub import HfFileSystem, HfApi, RepoUrl
 from fsspec import AbstractFileSystem
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, ContextManager, Literal
+from upath import UPath
 
 from src import HF_ENTITY
 
@@ -12,6 +15,102 @@ RepoType = Literal["space", "dataset", "model"]
 """
 
 INTERNAL_PREFIX = "_dev_"
+
+
+logger = logging.getLogger(__name__)
+
+
+def open_file(path: UPath, *args: Any, **kwargs: Any) -> ContextManager[Any]:
+    """Open a file using UPath filesystem interface.
+
+    Parameters
+    ----------
+    path
+        UPath object representing the file to open
+    *args
+        Additional positional arguments passed to fs.open()
+    **kwargs
+        Additional keyword arguments passed to fs.open()
+
+    Returns
+    -------
+    File-like object that supports context manager protocol
+    """
+    return path.fs.open(path, *args, **kwargs)
+
+
+def initialize_path(
+    path: str, max_attempts: int = 30, poll_interval: float = 2.0
+) -> None:
+    """Initialize a path by creating the associated repository for a Hugging Face URL.
+
+    This function checks if the provided path is a Hugging Face repository URL
+    (using the "hf://" protocol) and creates the repository on the Hub if it doesn't
+    already exist. After creation, it polls the repository URL to verify existence
+    before returning. For non-HF paths, this function has no effect.
+
+    Parameters
+    ----------
+    path : str
+        The path to initialize. Can be a local path, remote URL, or Hugging Face
+        repository URL (e.g., "hf://datasets/my-org/my-dataset").
+    max_attempts : int, optional
+        Maximum number of polling attempts to verify repository existence after creation,
+        by default 30
+    poll_interval : float, optional
+        Time to wait between polling attempts in seconds, by default 2.0
+
+    Raises
+    ------
+    RuntimeError
+        If the repository cannot be verified to exist after max_attempts polling attempts
+
+    Examples
+    --------
+    >>> # Initialize a Hugging Face dataset repository
+    >>> initialize_path("hf://datasets/my-org/new-dataset")
+
+    >>> # No effect for local paths
+    >>> initialize_path("/local/path/to/data")
+
+    >>> # Initialize with custom polling parameters
+    >>> initialize_path(
+    ...     "hf://datasets/my-org/new-dataset", max_attempts=5, poll_interval=1.0
+    ... )
+    """
+    path = UPath(path)
+    if path.protocol != "hf":
+        return
+    if path.exists():
+        return
+
+    hf_repo = HfRepo.from_url(path)
+    logger.info(
+        f"Creating repository {hf_repo.repo_id()} on Hugging Face for path {path}"
+    )
+    create_on_hub(hf_repo, exist_ok=True)
+
+    # Poll for repository existence after creation
+    for attempt in range(1, max_attempts + 1):
+        # It is essential to recreate the UPath object to avoid caching of existence status
+        repo_path = UPath(hf_repo.url())
+        logger.info(
+            f"Polling for repository ({repo_path}) existence (attempt {attempt}/{max_attempts})"
+        )
+
+        # It is also essential to clear the fsspec cache between checks;
+        repo_path.fs.clear_instance_cache()
+
+        if repo_path.exists():
+            logger.info(f"Repository {hf_repo.repo_id()} successfully created")
+            return
+        if attempt < max_attempts:
+            time.sleep(poll_interval)
+
+    raise RuntimeError(
+        f"Repository {hf_repo.repo_id()} could not be verified to exist after "
+        f"{max_attempts} attempts. Repository may still be propagating."
+    )
 
 
 @dataclass
@@ -41,7 +140,7 @@ class HfRepo:
     type: RepoType
     internal: bool
 
-    def to_repo_id(self) -> str:
+    def repo_id(self) -> str:
         """Generate the repository ID for this HfRepo.
 
         Returns
@@ -54,12 +153,12 @@ class HfRepo:
         >>> repo = HfRepo(
         ...     entity="my-org", name="dataset", type="dataset", internal=False
         ... )
-        >>> repo.to_repo_id()
+        >>> repo.repo_id()
         'my-org/dataset'
         >>> repo_internal = HfRepo(
         ...     entity="my-org", name="dataset", type="dataset", internal=True
         ... )
-        >>> repo_internal.to_repo_id()
+        >>> repo_internal.repo_id()
         'my-org/_dev_dataset'
         """
         name = f"{INTERNAL_PREFIX}{self.name}" if self.internal else self.name
@@ -84,9 +183,9 @@ class HfRepo:
         ...     entity="my-org", name="dataset", type="dataset", internal=True
         ... )
         >>> repo.path()
-        'my-org/_dev_dataset'
+        'datasets/my-org/_dev_dataset'
         >>> repo.path("data", "train.csv")
-        'my-org/_dev_dataset/data/train.csv'
+        'datasets/my-org/_dev_dataset/data/train.csv'
         """
         name = f"{INTERNAL_PREFIX}{self.name}" if self.internal else self.name
         # Repos of type "model" require no path prefix; dataset and space do
@@ -334,7 +433,7 @@ def hf_repo(
     >>> # Create a dataset repository
     >>> repo = hf_repo("my-dataset")
     >>> repo.url("train.csv")
-    'hf://my-org/my-dataset/train.csv'
+    'hf://datasets/my-org/my-dataset/train.csv'
 
     >>> # Read data with pandas
     >>> import pandas as pd
@@ -402,5 +501,5 @@ def create_on_hub(repo: HfRepo, *, private: bool | None = None, **kwargs) -> Rep
     """
     api = HfApi()
     return api.create_repo(
-        repo_id=repo.to_repo_id(), repo_type=repo.type, private=private, **kwargs
+        repo_id=repo.repo_id(), repo_type=repo.type, private=private, **kwargs
     )

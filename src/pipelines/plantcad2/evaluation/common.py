@@ -13,11 +13,11 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import torch
+from pathlib import Path
+from upath import UPath
 from datasets import load_dataset
 from numpy.typing import NDArray
 from sklearn.metrics import auc, roc_curve
@@ -29,11 +29,6 @@ from src.pipelines.plantcad2.evaluation.data import SequenceDataset
 
 
 logger = logging.getLogger(__name__)
-
-
-def get_evaluation_config_path() -> str:
-    """Get the path to the PlantCAD2 evaluation config.yaml file."""
-    return str(Path(__file__).parent / "configs" / "config.yaml")
 
 
 def simulate_logits(df: pd.DataFrame) -> NDArray[np.floating]:
@@ -222,9 +217,9 @@ def load_and_downsample_dataset(
     dataset_path: str,
     dataset_subdir: str,
     dataset_split: str,
-    dataset_dir: Path,
+    dataset_dir: UPath,
     sample_size: int | None = None,
-) -> tuple[Path, int]:
+) -> tuple[UPath, int]:
     """Load dataset from Hugging Face and optionally downsample.
 
     Parameters
@@ -242,7 +237,7 @@ def load_and_downsample_dataset(
 
     Returns
     -------
-    tuple[Path, int]
+    tuple[UPath, int]
         Tuple of (dataset_path, num_samples).
     """
 
@@ -268,8 +263,8 @@ def load_and_downsample_dataset(
 
 
 def generate_model_logits(
-    dataset_path: Path,
-    output_dir: Path,
+    dataset_path: UPath,
+    output_dir: UPath,
     model_path: str,
     device: str | torch.device,
     token_idx: int,
@@ -277,7 +272,7 @@ def generate_model_logits(
     simulation_mode: bool = True,
     worker_id: int | None = None,
     num_workers: int | None = None,
-) -> Path:
+) -> UPath:
     """Generate logits using either fake random data or real model inference.
 
     Parameters
@@ -303,7 +298,7 @@ def generate_model_logits(
 
     Returns
     -------
-    Path
+    UPath
         Path to the logits file written under output_dir.
     """
     df = pd.read_parquet(dataset_path)
@@ -317,7 +312,9 @@ def generate_model_logits(
 
         output_dir.mkdir(parents=True, exist_ok=True)
         logits_path = output_dir / "logits.tsv"
-        np.savetxt(logits_path, logits_matrix, delimiter="\t")
+        pd.DataFrame(logits_matrix).to_csv(
+            logits_path, sep="\t", header=False, index=False
+        )
     else:
         logger.info("Generating real logits using pre-trained model")
 
@@ -341,7 +338,9 @@ def generate_model_logits(
             logits_path = output_dir / f"logits_{worker_id:05d}.tsv"
         else:
             logits_path = output_dir / "logits.tsv"
-        np.savetxt(logits_path, logits_matrix, delimiter="\t")
+        pd.DataFrame(logits_matrix).to_csv(
+            logits_path, sep="\t", header=False, index=False
+        )
 
     logger.info(f"Generated logits for {len(logits_matrix)} sequences")
     logger.info(f"Saved logits to: {logits_path}")

@@ -1,7 +1,7 @@
 import logging
 
 
-def init_logging(
+def initialize_logging(
     level: int = logging.INFO, format: str = "%(asctime)s - %(levelname)s - %(message)s"
 ) -> None:
     """

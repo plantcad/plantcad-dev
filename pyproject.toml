@@ -20,6 +20,7 @@ dependencies = [
   "skypilot[lambda]>=0.10",
   "thalas==0.1.0",
   "ray[default,client]==2.45",
+  "universal-pathlib==0.2.6",
 ]
 
 [project.optional-dependencies]

@@ -145,10 +145,10 @@ class TestHfRepo:
             ("my-org", "dataset", True, "my-org/_dev_dataset"),
         ],
     )
-    def test_to_repo_id(self, entity, name, internal, expected):
-        """Test HfRepo.to_repo_id() generates correct repository IDs."""
+    def test_repo_id(self, entity, name, internal, expected):
+        """Test HfRepo.repo_id() generates correct repository IDs."""
         repo = HfRepo(entity=entity, name=name, type="dataset", internal=internal)
-        assert repo.to_repo_id() == expected
+        assert repo.repo_id() == expected
 
     @pytest.mark.parametrize(
         "url,expected_entity,expected_name,expected_type,expected_internal",
