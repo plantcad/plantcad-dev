@@ -1,50 +1,25 @@
-defaults:
-  device: "cuda:0"
-models:
-  plantcad2:
-    small:
-      path: kuleshov-group/compo-cad2-l24-dna-chtk-c8192-v2-b2-NpnkD-ba240000
-      name: pcv2_l24_d0768
-      max_sequence_length: 8192
-    medium:
-      path: kuleshov-group/compo-cad2-l48-dna-chtk-c8k-1t-v2d-b2-lr4e4-fcpffa-ba476838
-      name: pcv2_l48_d1024
-      max_sequence_length: 8192
-    large:
-      path: kuleshov-group/compo-cad2-l48-d1536-dna-chtk-c8k-1t-v1-b2-lr4e4-NzqiLr
-      name: pcv2_l48_d1536
-      max_sequence_length: 8192
-datasets:
-  evaluation:
-    plantcad1:
-      path: kuleshov-group/cross-species-single-nucleotide-annotation
-paths:
-  data_dir: data
 tasks:
   evolutionary_constraint:
-    model_path: ${models.plantcad2.small.path}
-    dataset_split: valid
-    dataset_subdir: Evolutionary_constraint
-    device: ${defaults.device}
-    sample_size: 1000
-    batch_size: 128
-    token_idx: 255
-    repo_id: ${datasets.evaluation.plantcad1.path}
-    output_dir: ${paths.data_dir}/evolutionary_constraint
-    execution_mode: local # or "slurm"
-    slurm_config:
-      partition: gh
-      nodes: 2
-      tasks_per_node: 1
-      timeout_min: 60
-  splice_acceptor:
-    model_path: ${models.plantcad2.small.path}
-    dataset_split: valid
-    dataset_subdir: Acceptor
-    device: ${defaults.device}
-    sample_size: 1000
-    batch_size: 128
-    token_idx: 255
-    repo_id: ${datasets.evaluation.plantcad1.path}
-    output_dir: ${paths.data_dir}/splice_acceptor
-    execution_mode: local
+    downsample_dataset:
+      dataset_path: kuleshov-group/cross-species-single-nucleotide-annotation
+      dataset_split: valid
+      dataset_subdir: Evolutionary_constraint
+      sample_size: 1000
+    generate_logits:
+      model_path: kuleshov-group/compo-cad2-l24-dna-chtk-c8192-v2-b2-NpnkD-ba240000
+      device: cuda
+      batch_size: 128
+      token_idx: 255
+      simulation_mode: true
+    # Empty configurations are necessary to still include
+    # base configs for steps with input_path and output_path
+    generate_scores: {}
+    compute_roc: {}
+datasets:
+  - path: kuleshov-group/cross-species-single-nucleotide-annotation
+    sequence_length: 512
+models:
+  - path: kuleshov-group/compo-cad2-l24-dna-chtk-c8192-v2-b2-NpnkD-ba240000
+    max_sequence_length: 8192
+executor:
+  prefix: /tmp/evolutionary_constraint

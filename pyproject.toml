@@ -9,19 +9,22 @@ description = "BioLM Demo: Biological Language Model demonstrations and experime
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-  "torch==2.7.1",
   "transformers==4.55.0",
   "pandas==2.3.1",
   "numpy==2.3.2",
   "scikit-learn==1.7.1",
   "datasets==4.0.0",
-  "metaflow==2.17.0",
   "tqdm==4.67.1",
-  "pydantic-settings==2.10.1",
-  "omegaconf>=2.3.0",
+  "pydantic==2.11.7",
 ]
 
 [project.optional-dependencies]
+cpu = [
+  "torch==2.7.1",
+]
+gpu = [
+  "torch==2.7.1",
+]
 mamba = [
   "causal-conv1d==1.5.0.post8",
   "mamba-ssm==2.2.4",
@@ -31,9 +34,18 @@ mamba = [
 packages = ["src"]
 
 [tool.uv.sources]
-torch = { index = "pytorch-cu128" }
+torch = [
+  { index = "pytorch-cpu", marker = "extra == 'cpu'" },
+  { index = "pytorch-cu128", marker = "extra != 'cpu'" },
+]
 causal-conv1d = { git = "https://github.com/Dao-AILab/causal-conv1d", tag = "v1.5.0.post8" }
 mamba-ssm = { git = "https://github.com/state-spaces/mamba", tag = "v2.2.4" }
+thalas = { git = "https://github.com/Open-Athena/thalas", branch = "executor-extraction" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true                              # Use this index only for pytorch
 
 [[tool.uv.index]]
 name = "pytorch-cu128"
@@ -63,4 +75,7 @@ dev = [
 ]
 slurm = [
   "submitit>=1.5.1",
+]
+thalas = [
+  "thalas",
 ]
