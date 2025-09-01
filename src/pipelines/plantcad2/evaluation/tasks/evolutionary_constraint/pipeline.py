@@ -125,11 +125,8 @@ def generate_logits(config: GenerateLogitsConfig) -> None:
         else:
             raise ValueError("No worker outputs found to combine")
 
-    # TODO: Figure out the correct way to fetch inputs from two steps upstream
-    # For now, pass the dataset_path forward in pipeline_data
     pipeline_data.update(
         {
-            "dataset_path": dataset_path,
             "logits_relpath": logits_path.relative_to(output_path),
             "token_idx": config.token_idx,
         }
@@ -154,9 +151,8 @@ def generate_scores(config: GenerateScoresConfig) -> None:
 
     token_idx = pipeline_data["token_idx"]
 
-    # Get dataset path from pipeline_data (passed forward from generate_logits)
-    # TODO: This is temporary - need proper way to access inputs from two steps upstream
-    dataset_path = pipeline_data["dataset_path"]
+    # Get downsampled dataset path from two steps upstream in pipeline
+    dataset_path = UPath(config.dataset_path)
 
     _, y_true, y_scores = compute_plantcad_scores(
         dataset_path=dataset_path,
@@ -221,7 +217,7 @@ class EvolutionaryConstraintPipeline:
     def downsample_dataset(self) -> ExecutorStep:
         """Load and downsample the HuggingFace dataset."""
         return ExecutorStep(
-            name="evolutionary_downsample_dataset",
+            name="downsample_dataset",
             fn=downsample_dataset,
             config=replace(
                 self.steps_config.downsample_dataset, output_path=this_output_path()
@@ -232,7 +228,7 @@ class EvolutionaryConstraintPipeline:
     def generate_logits(self) -> ExecutorStep:
         """Generate logits using the pre-trained model."""
         return ExecutorStep(
-            name="evolutionary_generate_logits",
+            name="generate_logits",
             fn=generate_logits,
             config=replace(
                 self.steps_config.generate_logits,
@@ -245,11 +241,12 @@ class EvolutionaryConstraintPipeline:
     def generate_scores(self) -> ExecutorStep:
         """Generate scores for plantcad evaluation."""
         return ExecutorStep(
-            name="evolutionary_generate_scores",
+            name="generate_scores",
             fn=generate_scores,
             config=replace(
                 self.steps_config.generate_scores,
                 input_path=output_path_of(self.generate_logits()),
+                dataset_path=output_path_of(self.downsample_dataset()),
                 output_path=this_output_path(),
             ),
             description="Generate plantcad scores",
@@ -258,7 +255,7 @@ class EvolutionaryConstraintPipeline:
     def compute_roc(self) -> ExecutorStep:
         """Compute and print ROC AUC score."""
         return ExecutorStep(
-            name="evolutionary_compute_roc",
+            name="compute_roc",
             fn=compute_roc,
             config=replace(
                 self.steps_config.compute_roc,

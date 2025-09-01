@@ -64,7 +64,9 @@ class GenerateLogitsConfig(BaseStepConfig):
 class GenerateScoresConfig(BaseStepConfig):
     """Configuration for scores generation step."""
 
-    ...
+    dataset_path: Any = Field(
+        default=None, description="Output path from dataset downsampling step"
+    )
 
 
 @dataclass
