@@ -30,5 +30,3 @@ run: |
       --executor.prefix hf://datasets/plantcad/_dev_biolm_demo \
       --executor.force_run_failed true \
       ${ARGS}
-
-  # python test_ray_cluster.py

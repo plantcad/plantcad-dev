@@ -77,7 +77,7 @@ CONFIG_PATH=src/pipelines/plantcad2/evaluation/configs
 # Launch a dev cluster; see:
 # - https://docs.skypilot.co/en/latest/reference/cli.html
 # - https://docs.skypilot.co/en/latest/reference/yaml-spec.html
-sky launch -c biolm-dev --num-nodes 1 --gpus "A100:1" --disk-size 100 --workdir .
+sky launch -c biolm-dev --num-nodes 2 --gpus "A10:1" --disk-size 100 --workdir .
 # Alternatively, use the cluster YAML config:
 sky launch -c biolm-dev $CONFIG_PATH/cluster.sky.yaml --env HUGGING_FACE_HUB_TOKEN
 # On successful completion, you will see the following:
@@ -143,47 +143,76 @@ Shared storage is currently supported via Hugging Face. See the [Hugging Face Fi
 
 ### Reading data
 
+The simplest way to read remote data is through existing fsspec-compatible libraries (pandas, pyarrow, dask, xarray, etc.) or via [UPath](https://github.com/fsspec/universal_pathlib), an extension to `pathlib.Path` supporting remote file systems.
+
+Here are a few examples:
+
 ```python
-from src.io import HfRepo
+# Use fsspec compatibily libraries
+import pandas as pd
+df = pd.read_parquet("hf://datasets/openai/gsm8k/main/train-00000-of-00001.parquet")
+
+# Use UPath
+from upath import UPath; import gzip
+path = UPath("hf://openai/gpt-oss-120b") / "config.json
+# Note: HF text files are gzip compressed by default
+gzip.decompress(path.read_bytes()).decode("utf-8")
+
+# Plain text HTTP example
+path = UPath("https://text.npr.org")
+path.read_text(encoding="utf-8")
+```
+
+Other existing utilities like [huggingface_hub.RepoUrl](https://github.com/huggingface/huggingface_hub/blob/v0.34.4/src/huggingface_hub/hf_api.py#L536) are also useful.  This makes it straightforward to parse HF urls into their constituent parts, e.g.:
+
+```python
+from huggingface_hub import RepoUrl
+url = RepoUrl("hf://openai/gpt-oss-120b")
+url.repo_type, url.repo_id, url.namespace, url.repo_name
+# ('model', 'openai/gpt-oss-120b', 'openai', 'gpt-oss-120b')
+```
+
+This project provides an additional utility on top of `RepoUrl` to support the separation of "internal" and "external" repositories.  This exists so that intermediate pipeline results can be stored in public HF repositories with a naming convention that separates them from final results.  Currently, that convention prefixes "_dev_" to the repository names.  Examples:
+
+```python
+from src import io
 import pandas as pd
 
-# Read openai/gsm8k test split
-repo = HfRepo.from_repo_id("openai/gsm8k", type="dataset")
-df = pd.read_parquet(repo.url("main/test-00000-of-00001.parquet"))
+repo = io.hf_repo("plantcad/training_dataset", internal=False)
+repo
+# HfRepo(entity='plantcad', name='plantcad/training_dataset', type='dataset', internal=False)
+repo.url()
+# 'hf://datasets/plantcad/plantcad/training_dataset'
 
-# Alternatively, use explicit factory function
-from src.io import hf_repo
-
-# Create repo reference
-gsm8k_repo = hf_repo("gsm8k", entity="openai", type="dataset", internal=False)
-train_df = pd.read_parquet(gsm8k_repo.url("train/train-00000-of-00001.parquet"))
+io.hf_repo("plantcad/training_dataset", internal=True).url()
+# 'hf://datasets/plantcad/_dev_training_dataset'
 ```
 
 ### Writing data
 
-Note: Writing data requires authentication. Use `huggingface-cli login` or set your HF token.
+Writing data can be done through an fsspec filesystem or via UPath.  This will require authentication, so use `huggingface-cli login` or set `HUGGING_FACE_HUB_TOKEN` in the environment to do that.  Examples:
 
 ```python
 from src import io
+from upath import UPath
 
 # Create repo reference (uses "plantcad" as default entity)
 repo = io.hf_repo("test-dataset", type="dataset")
+repo.url()
+# 'hf://datasets/plantcad/test-dataset'
 
 # Create the dataset repository on HuggingFace Hub
-repo_url = io.create_on_hub(repo, private=False)
+io.create_on_hub(repo, private=False)
 
-# Get filesystem instance and write data
+# Write with explicit filesystem instance
 fs = io.filesystem()
 content = "This is a test data file."
 with fs.open(repo.url("data.txt"), "w") as f:
     f.write(content)
 
-# Example with internal naming convention
-internal_repo = io.hf_internal_repo("test-dataset")
-io.create_on_hub(internal_repo, private=False)  # Creates "plantcad/_dev_test-dataset"
-
-with fs.open(internal_repo.url("data.txt"), "w") as f:
-    f.write(content)
+# Write via UPath with filesystem implicit in url (i.e. "hf://")
+path = UPath(repo.url("data.txt"))
+path.write_text(content)
 ```
 
 

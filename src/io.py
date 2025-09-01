@@ -259,48 +259,6 @@ class HfRepo:
         return entity, name, internal
 
     @staticmethod
-    def from_repo_id(repo_id: str, *, type: RepoType = "dataset") -> "HfRepo":
-        """Create an HfRepo instance from a repository ID string.
-
-        Parameters
-        ----------
-        repo_id : str
-            Repository ID in the format "entity/name" (e.g., "my-org/my-dataset")
-        type : RepoType, optional
-            Repository type - "dataset", "model", or "space", by default "dataset"
-
-        Returns
-        -------
-        HfRepo
-            An HfRepo instance with internal=False
-
-        Raises
-        ------
-        ValueError
-            If repo_id doesn't contain exactly one slash
-
-        Examples
-        --------
-        >>> repo = HfRepo.from_repo_id("my-org/my-dataset")
-        >>> repo.entity
-        'my-org'
-        >>> repo.name
-        'my-dataset'
-        >>> repo.type
-        'dataset'
-        >>> repo.internal
-        False
-
-        >>> model_repo = HfRepo.from_repo_id(
-        ...     "huggingface/CodeBERTa-small-v1", type="model"
-        ... )
-        >>> model_repo.url()
-        'hf://huggingface/CodeBERTa-small-v1'
-        """
-        entity, name, internal = HfRepo._validate_and_parse_repo_id(repo_id)
-        return HfRepo(entity=entity, name=name, type=type, internal=internal)
-
-    @staticmethod
     def from_url(url: str) -> "HfRepo":
         """Create an HfRepo instance from a repository URL.
 
@@ -326,24 +284,19 @@ class HfRepo:
         Examples
         --------
         >>> repo = HfRepo.from_url("https://huggingface.co/microsoft/DialoGPT-medium")
-        >>> repo.entity
-        'microsoft'
-        >>> repo.name
-        'DialoGPT-medium'
-        >>> repo.type
-        'model'
-        >>> repo.internal
-        False
+        HfRepo(entity='microsoft', name='DialoGPT-medium', type='model', internal=False)
 
-        >>> dataset_repo = HfRepo.from_url("hf://datasets/huggingface/squad")
-        >>> dataset_repo.type
-        'dataset'
+        >>> HfRepo.from_url("hf://datasets/huggingface/squad")
+        HfRepo(entity='huggingface', name='squad', type='dataset', internal=False)
 
-        >>> space_repo = HfRepo.from_url(
-        ...     "https://huggingface.co/spaces/gradio/calculator"
-        ... )
-        >>> space_repo.type
-        'space'
+        >>> HfRepo.from_url("https://huggingface.co/spaces/gradio/calculator")
+        HfRepo(entity='gradio', name='calculator', type='space', internal=False)
+
+        >>> HfRepo.from_url("plantcad/_dev_training_dataset")  # "internal" dataset
+        HfRepo(entity='plantcad', name='training_dataset', type='model', internal=True)
+
+        >>> HfRepo.from_url("plantcad/training_dataset")  # "external" dataset
+        HfRepo(entity='plantcad', name='training_dataset', type='model', internal=False)
         """
         try:
             repo_url = RepoUrl(url)
