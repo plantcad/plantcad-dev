@@ -10,12 +10,14 @@ workdir: .
 run: |
   set -e
 
+  # Log SkyPilot environment variables
   echo "SKYPILOT_NUM_NODES: $SKYPILOT_NUM_NODES"
   echo "SKYPILOT_NUM_GPUS_PER_NODE: $SKYPILOT_NUM_GPUS_PER_NODE"
   echo "SKYPILOT_NODE_IPS: $SKYPILOT_NODE_IPS"
   echo "SKYPILOT_NODE_RANK: $SKYPILOT_NODE_RANK"
 
-
+  # Execute the pipeline in a fresh environment with allowlist to
+  # avoid collisions between SkyPilot Ray and Thalas Ray clusters
   env -i \
     HUGGING_FACE_HUB_TOKEN="$HUGGING_FACE_HUB_TOKEN" \
     SKYPILOT_NODE_IPS="$SKYPILOT_NODE_IPS" \
