@@ -1,10 +1,10 @@
-# BioLM Demo Repository
+# PlantCAD Development Repository
 
-Biological Language Model data, training and inference pipeline prototypes.
+This project contains [PlantCaduceus](https://doi.org/10.1101/2024.06.04.596709) (PlantCAD) evaluation and experimentation pipelines.
 
 ## Setup
 
-This project uses [uv](https://docs.astral.sh/uv/) for Python dependency management.
+Create an environment via [uv](https://docs.astral.sh/uv/):
 
 ```bash
 # Install uv
@@ -77,25 +77,25 @@ CONFIG_PATH=src/pipelines/plantcad2/evaluation/configs
 # Launch a dev cluster; see:
 # - https://docs.skypilot.co/en/latest/reference/cli.html
 # - https://docs.skypilot.co/en/latest/reference/yaml-spec.html
-sky launch -c biolm-dev --num-nodes 2 --gpus "A10:1" --disk-size 100 --workdir .
+sky launch -c pc-dev --num-nodes 2 --gpus "A10:1" --disk-size 100 --workdir .
 # Alternatively, use the cluster YAML config:
-sky launch -c biolm-dev $CONFIG_PATH/cluster.sky.yaml --env HUGGING_FACE_HUB_TOKEN
+sky launch -c pc-dev $CONFIG_PATH/cluster.sky.yaml --env HUGGING_FACE_HUB_TOKEN
 # On successful completion, you will see the following:
 # 📋 Useful Commands
-# Cluster name: biolm-dev
-# ├── To log into the head VM:	ssh biolm-dev
-# ├── To submit a job:		sky exec biolm-dev yaml_file
-# ├── To stop the cluster:	sky stop biolm-dev
-# └── To teardown the cluster:	sky down biolm-dev
+# Cluster name: pc-dev
+# ├── To log into the head VM:	ssh pc-dev
+# ├── To submit a job:		sky exec pc-dev yaml_file
+# ├── To stop the cluster:	sky stop pc-dev
+# └── To teardown the cluster:	sky down pc-dev
 
 # Submit a job to the cluster
 # NOTE: code from the working directory is synced to the cluster
 # for every `exec` and `launch` command; see:
 # https://docs.skypilot.co/en/latest/examples/syncing-code-artifacts.html#sync-code-from-a-local-directory-or-a-git-repository
-sky exec biolm-dev $CONFIG_PATH/task.sky.yaml --env HUGGING_FACE_HUB_TOKEN
+sky exec pc-dev $CONFIG_PATH/task.sky.yaml --env HUGGING_FACE_HUB_TOKEN
 
 # Add arbitrary arguments to the task execution
-ARGS="--executor.force_run_failed=true" sky exec sky-c43e-eczech $CONFIG_PATH/task.sky.yaml \
+ARGS="--executor.force_run_failed=true" sky exec pc-dev $CONFIG_PATH/task.sky.yaml \
   --env HUGGING_FACE_HUB_TOKEN --env ARGS
 ```
 
@@ -105,17 +105,17 @@ To add new dependencies in a running cluster, note that you can simply run the c
 
 ```bash
 uv add universal-pathlib==0.2.6
-sky launch -c biolm-dev $CONFIG_PATH/cluster.sky.yaml --env HUGGING_FACE_HUB_TOKEN
+sky launch -c pc-dev $CONFIG_PATH/cluster.sky.yaml --env HUGGING_FACE_HUB_TOKEN
 # ...
 # └── Job started. Streaming logs... (Ctrl-C to exit log streaming; job will not be killed)
 # (setup pid=4016) + uv sync --extra gpu --extra mamba
 # (setup pid=5650, ip=10.19.95.95) + uv sync --extra gpu --extra mamba
 # ...
 # (setup pid=4016) Installed 2 packages in 0.59ms
-# (setup pid=4016)  ~ biolm-demo==0.1.0 (from file:///home/ubuntu/sky_workdir)
+# (setup pid=4016)  ~ plantcad-dev==0.1.0 (from file:///home/ubuntu/sky_workdir)
 # (setup pid=4016)  + universal-pathlib==0.2.6s
 # (setup pid=5650, ip=10.19.95.95) Installed 2 packages in 0.58ms
-# (setup pid=5650, ip=10.19.95.95)  ~ biolm-demo==0.1.0 (from file:///home/ubuntu/sky_workdir)
+# (setup pid=5650, ip=10.19.95.95)  ~ plantcad-dev==0.1.0 (from file:///home/ubuntu/sky_workdir)
 # (setup pid=5650, ip=10.19.95.95)  + universal-pathlib==0.2.6
 ```
 
@@ -126,7 +126,7 @@ Both SkyPilot and Thalas require Ray, so two separate Ray clusters are running o
 
 ```bash
 # View the ray dashboard port to your local machine
-ssh -L 8365:localhost:8365 biolm-dev -N
+ssh -L 8365:localhost:8365 pc-dev -N
 open http://localhost:8365
 
 # Kill Ray processes for one of the clusters; e.g. the non-SkyPilot cluster in this case
@@ -222,8 +222,8 @@ When running Thalas pipelines, it is common to need to clear the paths used for 
 
 ```bash
 # Clear all data within the dataset (without deleting it entirely)
-hf repo-files delete --repo-type dataset plantcad/_dev_biolm_demo '*'
+hf repo-files delete --repo-type dataset plantcad/_dev_pc2_eval '*'
 
 # Clear all data for a specific step
-hf repo-files delete --repo-type dataset plantcad/_dev_biolm_demo evolutionary_downsample_dataset-be132f
+hf repo-files delete --repo-type dataset plantcad/_dev_pc2_eval evolutionary_downsample_dataset-be132f
 ```

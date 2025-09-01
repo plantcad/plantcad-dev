@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "biolm-demo"
+name = "plantcad-dev"
 version = "0.1.0"
-description = "BioLM Demo: Biological Language Model demonstrations and experiments"
+description = "Development repository for PlantCaduceus (PlantCAD) evaluation and experimentation pipelines"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [

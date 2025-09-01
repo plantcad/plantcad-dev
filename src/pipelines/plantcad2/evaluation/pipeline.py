@@ -40,7 +40,7 @@ def main():
     cfg = draccus.parse(config_class=PipelineConfig)
 
     # If the executor prefix is on HF, create the repository for it first or Thalas will fail with, e.g.:
-    # > FileNotFoundError: plantcad/_dev_biolm_demo/evolutionary_downsample_dataset-be132f/.executor_info (repository not found).
+    # > FileNotFoundError: plantcad/_dev_pc2_eval/evolutionary_downsample_dataset-be132f/.executor_info (repository not found).
     initialize_path(cfg.executor.prefix)
 
     # Initialize the pipeline
