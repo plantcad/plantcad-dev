@@ -1,0 +1,34 @@
+name: plantcad2-evaluation
+
+num_nodes: 2
+envs:
+  HUGGING_FACE_HUB_TOKEN: null
+  ARGS: ""
+
+workdir: .
+
+run: |
+  set -e
+
+  # Log SkyPilot environment variables
+  echo "SKYPILOT_NUM_NODES: $SKYPILOT_NUM_NODES"
+  echo "SKYPILOT_NUM_GPUS_PER_NODE: $SKYPILOT_NUM_GPUS_PER_NODE"
+  echo "SKYPILOT_NODE_IPS: $SKYPILOT_NODE_IPS"
+  echo "SKYPILOT_NODE_RANK: $SKYPILOT_NODE_RANK"
+
+  # Execute the pipeline in a fresh environment with allowlist to
+  # avoid collisions between SkyPilot Ray and Thalas Ray clusters
+  env -i \
+    HUGGING_FACE_HUB_TOKEN="$HUGGING_FACE_HUB_TOKEN" \
+    SKYPILOT_NODE_IPS="$SKYPILOT_NODE_IPS" \
+    SKYPILOT_NODE_RANK="$SKYPILOT_NODE_RANK" \
+    SKYPILOT_NUM_NODES="$SKYPILOT_NUM_NODES" \
+    SKYPILOT_NUM_GPUS_PER_NODE="$SKYPILOT_NUM_GPUS_PER_NODE" \
+    bash --login scripts/ray_run.sh \
+    python -m src.pipelines.plantcad2.evaluation.pipeline \
+      --config_path src/pipelines/plantcad2/evaluation/configs/config.yaml \
+      --tasks.evolutionary_constraint.generate_logits.simulation_mode false \
+      --tasks.evolutionary_constraint.generate_logits.num_workers 2 \
+      --executor.prefix hf://datasets/plantcad/_dev_biolm_demo \
+      --executor.force_run_failed true \
+      ${ARGS}

@@ -55,13 +55,18 @@ class GenerateLogitsConfig(BaseStepConfig):
         default=True,
         description="Whether to use fake random logits for testing (simulation_mode=True) or real model inference",
     )
+    num_workers: int = Field(
+        default=1, description="The number of workers to use for Ray"
+    )
 
 
 @dataclass
 class GenerateScoresConfig(BaseStepConfig):
     """Configuration for scores generation step."""
 
-    ...
+    dataset_path: Any = Field(
+        default=None, description="Output path from dataset downsampling step"
+    )
 
 
 @dataclass

@@ -8,6 +8,7 @@ repos:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
+        exclude: '\.sky\.yaml$'
       - id: debug-statements
         exclude: ^src/debug\.py$
       - id: mixed-line-ending
