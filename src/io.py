@@ -1,12 +1,26 @@
 import logging
 import time
+import tempfile
+from pathlib import Path
 from huggingface_hub import HfFileSystem, HfApi, RepoUrl
+from huggingface_hub.constants import (
+    REPO_TYPE_MODEL,
+)
+from huggingface_hub.constants import (
+    REPO_TYPES_MAPPING,
+)  # e.g. {"datasets": "dataset", "spaces": "space", "models": "model"}
 from fsspec import AbstractFileSystem
 from dataclasses import dataclass
-from typing import Any, ContextManager, Literal
+from typing import Any, ContextManager, Literal, Callable
+from contextlib import contextmanager
 from upath import UPath
+import ray
 
 from src import HF_ENTITY
+
+# Inverted mapping of repo type path components to repo type;
+# e.g. {"dataset": "datasets", "space": "spaces", "model": "models"}
+REPO_PATHS_MAPPING = {v: k for k, v in REPO_TYPES_MAPPING.items()}
 
 RepoType = Literal["space", "dataset", "model"]
 """ Hugging Face repository type; see:
@@ -24,6 +38,7 @@ def open_file(path: UPath, *args: Any, **kwargs: Any) -> ContextManager[Any]:
     """Open a file using UPath filesystem interface.
 
     TODO: implement retry logic, which is likely inevitable with fsspec
+          and why this function exists rather than using path.open() directly
 
     Parameters
     ----------
@@ -190,9 +205,11 @@ class HfRepo:
         'datasets/my-org/_dev_dataset/data/train.csv'
         """
         name = f"{INTERNAL_PREFIX}{self.name}" if self.internal else self.name
-        # Repos of type "model" require no path prefix; dataset and space do
-        # Map singular types to plural path prefixes
-        type_to_prefix = {"dataset": "datasets", "space": "spaces"}
+        # Construct path components noting that repos of type "model" require
+        # no path prefix while dataset and space do ("datasets" and "spaces" @ TOW)
+        type_to_prefix = {
+            k: v for k, v in REPO_PATHS_MAPPING.items() if k != REPO_TYPE_MODEL
+        }
         prefix = [type_to_prefix[self.type]] if self.type in type_to_prefix else []
         parts = prefix + [self.entity, name] + list(path)
         return "/".join(parts)
@@ -224,54 +241,16 @@ class HfRepo:
         >>> import pandas as pd
         >>> df = pd.read_csv(repo.url("data.csv"))
         """
-        return f"hf://{self.path(*path)}"
-
-    @staticmethod
-    def _validate_and_parse_repo_id(repo_id: str) -> tuple[str, str, bool]:
-        """Validate and parse a repository ID into entity and name components.
-
-        Parameters
-        ----------
-        repo_id : str
-            Repository ID in the format "entity/name"
-
-        Returns
-        -------
-        tuple[str, str, bool]
-            A tuple of (entity, name, internal) where internal indicates if the
-            repository uses the internal naming convention
-
-        Raises
-        ------
-        ValueError
-            If repo_id doesn't contain exactly one slash or has empty components
-        """
-        parts = repo_id.split("/")
-        if len(parts) != 2 or not parts[0] or not parts[1]:
-            raise ValueError(
-                f"Invalid repository ID: '{repo_id}'. Expected format: 'entity/name'"
-            )
-
-        entity, name = parts[0], parts[1]
-        internal = name.startswith(INTERNAL_PREFIX)
-        # Strip internal prefix from name if present, since the internal flag will handle it
-        if internal:
-            name = name.removeprefix(INTERNAL_PREFIX)
-
-        return entity, name, internal
+        return UPath(self.path(*path), protocol="hf").as_uri()
 
     @staticmethod
     def from_url(url: str) -> "HfRepo":
         """Create an HfRepo instance from a repository URL.
 
-        This method uses RepoUrl from huggingface_hub to parse repository URLs
-        and extract the necessary components to create an HfRepo instance.
-
         Parameters
         ----------
         url : str
-            Repository URL (e.g., "https://huggingface.co/org/repo-name" or
-            "hf://datasets/org/repo-name")
+            Repository URL using hf:// protocol (e.g., "hf://datasets/org/repo-name")
 
         Returns
         -------
@@ -281,38 +260,102 @@ class HfRepo:
         Raises
         ------
         ValueError
-            If the URL is invalid or cannot be parsed
+            If the URL is invalid, not using hf:// protocol, or cannot be parsed
 
         Examples
         --------
-        >>> repo = HfRepo.from_url("https://huggingface.co/microsoft/DialoGPT-medium")
+        >>> repo = HfRepo.from_url("hf://microsoft/DialoGPT-medium")
         HfRepo(entity='microsoft', name='DialoGPT-medium', type='model', internal=False)
 
         >>> HfRepo.from_url("hf://datasets/huggingface/squad")
         HfRepo(entity='huggingface', name='squad', type='dataset', internal=False)
 
-        >>> HfRepo.from_url("https://huggingface.co/spaces/gradio/calculator")
+        >>> HfRepo.from_url("hf://spaces/gradio/calculator")
         HfRepo(entity='gradio', name='calculator', type='space', internal=False)
 
-        >>> HfRepo.from_url("plantcad/_dev_training_dataset")  # "internal" dataset
+        >>> HfRepo.from_url("hf://plantcad/_dev_training_dataset")  # "internal" model
         HfRepo(entity='plantcad', name='training_dataset', type='model', internal=True)
 
-        >>> HfRepo.from_url("plantcad/training_dataset")  # "external" dataset
+        >>> HfRepo.from_url("hf://plantcad/training_dataset")  # "external" model
         HfRepo(entity='plantcad', name='training_dataset', type='model', internal=False)
         """
         try:
-            repo_url = RepoUrl(url)
-            entity, name, internal = HfRepo._validate_and_parse_repo_id(
-                repo_url.repo_id
-            )
-            return HfRepo(
-                entity=entity,
-                name=name,
-                type=repo_url.repo_type,
-                internal=internal,
-            )
+            # Convert to UPath and validate protocol
+            path = UPath(url)
+            if path.protocol != "hf":
+                raise ValueError(
+                    f"Only hf:// protocol is supported, got: {path.protocol}"
+                )
+
+            # Get path components
+            parts = [p for p in path.path.split("/")]
+
+            if len(parts) < 2:
+                raise ValueError(
+                    f"URL path must have at least 2 components, got: {parts}"
+                )
+
+            # Parse repo type and extract entity/name
+            if parts[0] in REPO_TYPES_MAPPING:
+                if len(parts) < 3:
+                    raise ValueError(f"Not enough components for typed repo: {parts}")
+                repo_type, entity, name = (
+                    REPO_TYPES_MAPPING[parts[0]],
+                    parts[1],
+                    parts[2],
+                )
+            else:
+                repo_type, entity, name = REPO_TYPE_MODEL, parts[0], parts[1]
+
+            # Handle internal naming
+            internal = name.startswith(INTERNAL_PREFIX)
+            if internal:
+                name = name.removeprefix(INTERNAL_PREFIX)
+
+            return HfRepo(entity=entity, name=name, type=repo_type, internal=internal)
         except Exception as e:
             raise ValueError(f"Failed to parse repository URL '{url}': {e}") from e
+
+    def parse_path(self, url: str) -> str:
+        """Extract the path within the repository from a full URL.
+
+        This method takes a full URL and returns the relative path within this
+        repository by stripping the repository's base URL prefix.
+
+        Parameters
+        ----------
+        url : str
+            Full URL that should start with this repository's base URL
+
+        Returns
+        -------
+        str
+            The path within the repository (path_in_repo)
+
+        Raises
+        ------
+        ValueError
+            If the URL doesn't start with this repository's base URL
+
+        Examples
+        --------
+        >>> repo = HfRepo(
+        ...     entity="my-org", name="dataset", type="dataset", internal=False
+        ... )
+        >>> repo.parse_path("hf://datasets/my-org/dataset/data/train.csv")
+        'data/train.csv'
+        >>> repo.parse_path("hf://datasets/my-org/dataset/")
+        ''
+        """
+        prefix = self.url()
+        if not url.startswith(prefix):
+            raise ValueError(
+                f"URL '{url}' does not start with repository prefix '{prefix}'"
+            )
+
+        # Strip the prefix and any leading slash
+        path_in_repo = url.removeprefix(prefix).lstrip("/")
+        return path_in_repo
 
 
 def hf_internal_repo(
@@ -458,3 +501,117 @@ def create_on_hub(repo: HfRepo, *, private: bool | None = None, **kwargs) -> Rep
     return api.create_repo(
         repo_id=repo.repo_id(), repo_type=repo.type, private=private, **kwargs
     )
+
+
+def upload(path: UPath, writer: Callable[[Path], None], **kwargs) -> str:
+    """Write data to a Hugging Face repository using a custom writer function.
+
+    This function creates a temporary directory, calls the writer function to
+    write data to that directory, then uploads the entire directory to the Hub.
+
+    Parameters
+    ----------
+    path : UPath
+        Target path with hf:// protocol (e.g., "hf://datasets/org/repo/data.zarr")
+    writer : Callable[[Path], None]
+        Function that takes a local path and writes data to it
+    **kwargs
+        Additional arguments passed to HfApi.upload_folder()
+
+    Returns
+    -------
+    str
+        The commit hash of the upload
+
+    Examples
+    --------
+    >>> from upath import UPath
+    >>> from pathlib import Path
+    >>>
+    >>> def write_csv(local_path: Path):
+    ...     import pandas as pd
+    ...
+    ...     df = pd.DataFrame({"x": [1, 2], "y": [3, 4]})
+    ...     df.to_csv(local_path, index=False)
+    >>>
+    >>> commit_hash = upload(UPath("hf://datasets/my-org/data/file.csv"), write_csv)
+    """
+    if path.protocol != "hf":
+        raise ValueError(f"Only hf:// protocol is supported, got: {path.protocol}")
+
+    # Parse repo info from path
+    repo = HfRepo.from_url(str(path))
+    path_in_repo = repo.parse_path(str(path))
+
+    # Write to temporary directory
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        writer(temp_path)
+
+        # Upload to Hub
+        api = HfApi()
+        return api.upload_folder(
+            repo_id=repo.repo_id(),
+            repo_type=repo.type,
+            folder_path=temp_dir,
+            path_in_repo=path_in_repo,
+            **kwargs,
+        )
+
+
+@contextmanager
+def hf_repo_lock(path: UPath, lock, timeout_sec: int = 60):
+    """Context manager for uploading to HF repositories with distributed locking.
+
+    This context manager handles the acquisition and release of a distributed lock
+    for safe concurrent uploads to Hugging Face repositories. It yields the path
+    for use within the context.
+
+    Parameters
+    ----------
+    path : UPath
+        Target path with hf:// protocol for the upload
+    lock
+        Ray actor implementing acquire/release methods for distributed locking
+    timeout_sec : int, optional
+        Timeout in seconds for lock acquisition, by default 60
+
+    Yields
+    ------
+    UPath
+        The same path passed in, for convenience in the context
+
+    Raises
+    ------
+    ValueError
+        If lock acquisition fails within the timeout period
+
+    Examples
+    --------
+    >>> from upath import UPath
+    >>>
+    >>> # Assuming 'lock' is a Ray actor with acquire/release methods
+    >>> logits_path = UPath("hf://datasets/org/repo/logits.zarr")
+    >>> with hf_repo_lock(logits_path, lock) as path:
+    ...     upload(path, lambda temp_path: dataset.to_zarr(temp_path))
+    ...
+    """
+
+    logger.info(f"Saving data to {path}")
+    repo = HfRepo.from_url(str(path))
+    token = f"{repo.type}/{repo.entity}/{repo.name}"
+
+    logger.info(f"Acquiring lock for {token=}")
+    acquired = ray.get(lock.acquire.remote(token, timeout_sec=timeout_sec))
+    if not acquired:
+        raise ValueError(
+            f"Failed to acquire lock for {token} after {timeout_sec} seconds"
+        )
+
+    try:
+        logger.info(f"Lock acquired for {token}")
+        yield path
+        logger.info(f"Successfully completed operation for {path}")
+    finally:
+        logger.info(f"Releasing lock for {token=}")
+        ray.get(lock.release.remote(token))

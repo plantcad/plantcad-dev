@@ -13,10 +13,9 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-import ray
 import numpy as np
 import pandas as pd
-from src.io import HfRepo
+from src.io import upload, hf_repo_lock
 from src.utils.pipeline import AsyncLock
 import torch
 import xarray as xr
@@ -368,19 +367,14 @@ def generate_model_logits(
 
         logits_path = output_dir / f"logits_{worker_id:05d}.zarr"
 
-        logger.info(f"Saving logits to {logits_path}")
-        repo = HfRepo.from_url(logits_path)
-        token = f"{repo.type}/{repo.entity}/{repo.name}"
-        logger.info(f"Acquiring lock for {token=}")
-        acquired = ray.get(lock.acquire.remote(token, timeout_sec=60))
-        if not acquired:
-            raise ValueError(f"Failed to acquire lock for {token} after 60 seconds")
-        try:
-            # Note: mode="w-" fails for non-existent paths on HF, so we use mode="w" instead
-            logits.to_zarr(logits_path, zarr_format=2, consolidated=True, mode="w")
-        finally:
-            logger.info(f"Releasing lock for {token=}")
-            ray.get(lock.release.remote(token))
+        with hf_repo_lock(logits_path, lock) as locked_path:
+            logger.info(f"Writing logits to zarr file at {locked_path}")
+            upload(
+                locked_path,
+                lambda temp_path: logits.to_zarr(
+                    temp_path, zarr_format=2, consolidated=True, mode="w"
+                ),
+            )
 
     logger.info(f"Generated logits for {logits.sizes['sample']} sequences")
 
