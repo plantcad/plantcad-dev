@@ -19,6 +19,7 @@ run: |
   # Execute the pipeline in a fresh environment with allowlist to
   # avoid collisions between SkyPilot Ray and Thalas Ray clusters
   env -i \
+    HOME="$HOME" \
     HUGGING_FACE_HUB_TOKEN="$HUGGING_FACE_HUB_TOKEN" \
     SKYPILOT_NODE_IPS="$SKYPILOT_NODE_IPS" \
     SKYPILOT_NODE_RANK="$SKYPILOT_NODE_RANK" \

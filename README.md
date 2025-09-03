@@ -45,8 +45,8 @@ from pydantic import Field
 from dataclasses import replace
 from pydantic.dataclasses import dataclass
 from thalas.execution import ExecutorStep, ExecutorMainConfig, output_path_of, this_output_path
+from src.utils.logging import filter_known_warnings, initialize_logging
 from src.exec import executor_main
-from src.log import initialize_logging
 
 logger = logging.getLogger("ray")
 
@@ -62,6 +62,7 @@ class PipelineConfig:
 
 @ray.remote # Omit to execute on ray driver instead
 def greeting_step(config: GreetingConfig) -> None:
+    filter_known_warnings()
     message = f"Hello, {config.name}!"
     # Print to console
     logger.info(message)
@@ -82,8 +83,9 @@ class Pipeline:
 
 def main():
     initialize_logging()
+    filter_known_warnings()
     cfg = draccus.parse(config_class=PipelineConfig)
-    pipeline = SimplePipeline(cfg)
+    pipeline = Pipeline(cfg)
     executor_main(cfg.executor, [pipeline.greet()], init_logging=False)
 
 if __name__ == "__main__":

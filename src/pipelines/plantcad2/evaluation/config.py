@@ -6,13 +6,7 @@ from typing import Any
 from typing_extensions import Self
 from thalas.execution import ExecutorMainConfig
 
-
-@dataclass
-class BaseStepConfig:
-    """Base configuration for pipeline steps."""
-
-    input_path: Any = Field(default=None, description="Input path for pipeline data")
-    output_path: Any = Field(default=None, description="Output path for pipeline data")
+from src.utils.pipeline import BaseStepConfig
 
 
 @dataclass
@@ -64,7 +58,7 @@ class GenerateLogitsConfig(BaseStepConfig):
 class GenerateScoresConfig(BaseStepConfig):
     """Configuration for scores generation step."""
 
-    dataset_path: Any = Field(
+    dataset_input_path: Any = Field(
         default=None, description="Output path from dataset downsampling step"
     )
 

@@ -1,9 +1,6 @@
 """Data loading and processing utilities for PlantCAD2 evaluation."""
 
-import logging
 from torch.utils.data import Dataset
-
-logger = logging.getLogger(__name__)
 
 
 class SequenceDataset(Dataset):

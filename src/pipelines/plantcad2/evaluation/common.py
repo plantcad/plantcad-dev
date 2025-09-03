@@ -15,6 +15,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from src.utils.logging import filter_warnings
 import torch
 from pathlib import Path
 from upath import UPath
@@ -28,7 +29,7 @@ from src.hub import load_model_for_masked_lm, load_tokenizer
 from src.pipelines.plantcad2.evaluation.data import SequenceDataset
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ray")
 
 
 def simulate_logits(df: pd.DataFrame) -> NDArray[np.floating]:
@@ -112,7 +113,7 @@ def generate_logits(
     total_batches = len(loader)
     log_interval = max(1, total_batches // 20)  # Log every 5% of batches
 
-    logger.info(f"Generating real logits for {len(df)} sequences")
+    logger.info(f"Generating logits for {len(df)} sequences")
     logger.info(f"Processing {total_batches} batches with batch size {batch_size}")
 
     for batch_idx, batch in enumerate(loader):
@@ -301,6 +302,8 @@ def generate_model_logits(
     UPath
         Path to the logits file written under output_dir.
     """
+    filter_warnings()
+
     df = pd.read_parquet(dataset_path)
     _validate_sequence_lengths(df)
 
@@ -322,7 +325,7 @@ def generate_model_logits(
         if worker_id is not None and num_workers is not None:
             df = df.iloc[worker_id::num_workers]
             logger.info(
-                f"Worker {worker_id}/{num_workers} processing {len(df)} sequences"
+                f"Worker {worker_id + 1}/{num_workers}: processing {len(df)} sequences"
             )
 
         logits_matrix = generate_logits(

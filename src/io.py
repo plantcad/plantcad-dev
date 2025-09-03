@@ -17,11 +17,13 @@ RepoType = Literal["space", "dataset", "model"]
 INTERNAL_PREFIX = "_dev_"
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ray")
 
 
 def open_file(path: UPath, *args: Any, **kwargs: Any) -> ContextManager[Any]:
     """Open a file using UPath filesystem interface.
+
+    TODO: implement retry logic, which is likely inevitable with fsspec
 
     Parameters
     ----------
@@ -36,7 +38,7 @@ def open_file(path: UPath, *args: Any, **kwargs: Any) -> ContextManager[Any]:
     -------
     File-like object that supports context manager protocol
     """
-    return path.fs.open(path, *args, **kwargs)
+    return path.open(*args, **kwargs)
 
 
 def initialize_path(

@@ -18,11 +18,16 @@ TEMP_DIR=/tmp/ray_plantcad
 PLASMA_DIRECTORY="$HOME/ray_plantcad/plasma"
 OBJECT_SPILLING_DIRECTORY="$HOME/ray_plantcad/spill"
 
+
 # Check if Ray is already running on the expected port
 if ps aux | grep ray | grep -E "(--gcs_server_port=$GCS_PORT|--gcs-address=.*:$GCS_PORT)" &> /dev/null; then
   echo "Ray cluster already running on port $GCS_PORT"
 # Start it if not
 else
+  mkdir -p $TEMP_DIR
+  mkdir -p $PLASMA_DIRECTORY
+  mkdir -p $OBJECT_SPILLING_DIRECTORY
+
   if [ "$SKYPILOT_NODE_RANK" == "0" ]; then
     echo "Starting Ray head node on port $GCS_PORT"
     # Note: --include-dashboard is essential for Thalas/Marin (it's used programatically)
@@ -43,7 +48,6 @@ else
     ray start \
       --address $head_ip:$GCS_PORT \
       --disable-usage-stats \
-      --temp-dir $TEMP_DIR \
       --plasma-directory $PLASMA_DIRECTORY \
       --object-spilling-directory $OBJECT_SPILLING_DIRECTORY \
       --ray-client-server-port $CLIENT_PORT \

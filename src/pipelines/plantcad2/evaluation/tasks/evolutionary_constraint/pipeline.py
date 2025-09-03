@@ -1,7 +1,6 @@
 """Evolutionary constraint evaluation pipeline using thalas execution pattern."""
 
 import logging
-import pickle
 from dataclasses import replace
 import numpy as np
 import pandas as pd
@@ -22,15 +21,14 @@ from src.pipelines.plantcad2.evaluation.common import (
     load_and_downsample_dataset,
     generate_model_logits,
 )
-from src.io import open_file
+from src.utils.pipeline import save_step_json, load_step_json
 
 logger = logging.getLogger("ray")
 
 
 def downsample_dataset(config: DownsampleDatasetConfig) -> None:
     """Load and downsample the HuggingFace dataset."""
-    logger.info("Starting Evolutionary Constraint evaluation pipeline")
-    logger.info(f"Loaded task configuration:\n{config}")
+    logger.info(f"Starting dataset downsampling task; {config=}")
 
     # Setup dataset directory using executor-managed output path
     output_path = UPath(config.output_path)
@@ -44,26 +42,25 @@ def downsample_dataset(config: DownsampleDatasetConfig) -> None:
         sample_size=config.sample_size,
     )
 
-    # Save pipeline data
-    pipeline_data = {
-        "config": config,
+    # Save step data
+    step_data = {
         "num_samples": num_samples,
         "dataset_filename": dataset_path.name,
-        "dataset_relpath": dataset_path.relative_to(output_path),
+        "dataset_relpath": dataset_path.relative_to(output_path).path,
     }
-    with open_file(output_path / "pipeline_data", "wb") as f:
-        pickle.dump(pipeline_data, f)
+    save_step_json(output_path, step_data)
 
 
 def generate_logits(config: GenerateLogitsConfig) -> None:
     """Generate logits using either fake random data or real model inference."""
 
-    # Load pipeline data from previous step
-    with open_file(UPath(config.input_path) / "pipeline_data", "rb") as f:
-        pipeline_data = pickle.load(f)
+    logger.info(f"Starting logits generation task; {config=}")
+
+    # Load step data from previous step
+    input_step = load_step_json(UPath(config.input_path))
 
     # Construct dataset path from the previous step's output
-    dataset_path = UPath(config.input_path) / pipeline_data["dataset_relpath"]
+    dataset_path = UPath(config.input_path) / input_step["dataset_relpath"]
 
     output_path = UPath(config.output_path)
 
@@ -125,34 +122,36 @@ def generate_logits(config: GenerateLogitsConfig) -> None:
         else:
             raise ValueError("No worker outputs found to combine")
 
-    pipeline_data.update(
-        {
-            "logits_relpath": logits_path.relative_to(output_path),
-            "token_idx": config.token_idx,
-        }
-    )
+    # Save logits output location and token index for next step
+    output_step = {
+        "logits_relpath": logits_path.relative_to(output_path).path,
+        "token_idx": config.token_idx,
+    }
 
-    # Save updated pipeline data
-    with open_file(output_path / "pipeline_data", "wb") as f:
-        pickle.dump(pipeline_data, f)
+    # Save step data
+    save_step_json(output_path, output_step)
 
 
 def generate_scores(config: GenerateScoresConfig) -> None:
     """Generate scores for plantcad evaluation."""
-    # Load pipeline data from previous step
-    with open_file(UPath(config.input_path) / "pipeline_data", "rb") as f:
-        pipeline_data = pickle.load(f)
+    logger.info(f"Starting scores generation task; {config=}")
+
+    # Load step data from previous step
+    input_step = load_step_json(UPath(config.input_path))
 
     output_path = UPath(config.output_path)
 
     # Construct logits path from the previous step's output
-    logits_path = UPath(config.input_path) / pipeline_data["logits_relpath"]
+    logits_path = UPath(config.input_path) / input_step["logits_relpath"]
     logits_matrix = pd.read_csv(logits_path, sep="\t", header=None).values
 
-    token_idx = pipeline_data["token_idx"]
+    token_idx = input_step["token_idx"]
 
     # Get downsampled dataset path from two steps upstream in pipeline
-    dataset_path = UPath(config.dataset_path)
+    dataset_step_data = load_step_json(UPath(config.dataset_input_path))
+    dataset_path = (
+        UPath(config.dataset_input_path) / dataset_step_data["dataset_relpath"]
+    )
 
     _, y_true, y_scores = compute_plantcad_scores(
         dataset_path=dataset_path,
@@ -161,43 +160,50 @@ def generate_scores(config: GenerateScoresConfig) -> None:
         token_idx=token_idx,
     )
 
-    # Update pipeline data
-    pipeline_data.update(
+    # Save prediction data as parquet
+    predictions = pd.DataFrame(
         {
             "y_true": y_true,
             "y_scores": y_scores,
         }
     )
+    predictions.to_parquet(output_path / "predictions.parquet")
 
-    # Save updated pipeline data
-    with open_file(output_path / "pipeline_data", "wb") as f:
-        pickle.dump(pipeline_data, f)
+    # Save predictions file location for ROC computation
+    output_step = {
+        "predictions_relpath": "predictions.parquet",
+    }
+
+    # Save step data
+    save_step_json(output_path, output_step)
 
 
 def compute_roc(config: ComputeRocConfig) -> None:
     """Compute and print ROC AUC score."""
-    # Load pipeline data from previous step
-    with open_file(UPath(config.input_path) / "pipeline_data", "rb") as f:
-        pipeline_data = pickle.load(f)
+    logger.info(f"Starting ROC computation task; {config=}")
 
-    results = compute_roc_auc(pipeline_data["y_true"], pipeline_data["y_scores"])
+    # Load step data from previous step
+    input_step = load_step_json(UPath(config.input_path))
 
-    # Update pipeline data
-    pipeline_data.update(
-        {
-            "results": results,
-        }
+    # Load prediction data from parquet
+    predictions = pd.read_parquet(
+        UPath(config.input_path) / input_step["predictions_relpath"]
     )
+    y_true = predictions["y_true"].values
+    y_scores = predictions["y_scores"].values
 
-    # Final logging
-    logger.info("Pipeline completed successfully!")
-    logger.info(f"Final ROC AUC: {results.roc_auc:.4f}")
-    logger.info(f"Processed {results.num_samples} samples")
-    logger.info(f"Results saved to: {config.output_path}")
+    results = compute_roc_auc(y_true, y_scores)
 
-    # Save final pipeline data
-    with open_file(UPath(config.output_path) / "pipeline_data", "wb") as f:
-        pickle.dump(pipeline_data, f)
+    # Save only relevant results for this step (all fields expected by main pipeline)
+    output_step = {
+        "roc_auc": results.roc_auc,
+        "num_samples": results.num_samples,
+        "num_positive": results.num_positive,
+        "num_negative": results.num_negative,
+    }
+
+    # Save final step data
+    save_step_json(UPath(config.output_path), output_step)
 
 
 class EvolutionaryConstraintPipeline:
@@ -246,7 +252,7 @@ class EvolutionaryConstraintPipeline:
             config=replace(
                 self.steps_config.generate_scores,
                 input_path=output_path_of(self.generate_logits()),
-                dataset_path=output_path_of(self.downsample_dataset()),
+                dataset_input_path=output_path_of(self.downsample_dataset()),
                 output_path=this_output_path(),
             ),
             description="Generate plantcad scores",

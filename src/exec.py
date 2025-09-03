@@ -6,7 +6,7 @@ import ray
 from thalas.execution import Executor, ExecutorMainConfig, ExecutorStep
 from thalas.utilities.ray_utils import is_local_ray_cluster
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ray")
 
 
 # TODO: Move to Thalas once the initial Marin extraction is complete;
