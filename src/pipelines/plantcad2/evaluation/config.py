@@ -2,7 +2,6 @@
 
 from pydantic import Field, model_validator
 from pydantic.dataclasses import dataclass
-from typing import Any
 from typing_extensions import Self
 from thalas.execution import ExecutorMainConfig
 
@@ -58,9 +57,7 @@ class GenerateLogitsConfig(BaseStepConfig):
 class GenerateScoresConfig(BaseStepConfig):
     """Configuration for scores generation step."""
 
-    dataset_input_path: Any = Field(
-        default=None, description="Output path from dataset downsampling step"
-    )
+    ...
 
 
 @dataclass

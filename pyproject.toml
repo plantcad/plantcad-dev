@@ -21,6 +21,8 @@ dependencies = [
   "thalas==0.1.0",
   "ray[default,client]==2.45",
   "universal-pathlib==0.2.6",
+  "xarray==2025.8.0",
+  "zarr==3.1.2",
 ]
 
 [project.optional-dependencies]

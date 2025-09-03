@@ -4,6 +4,34 @@ from pydantic import Field
 from pydantic.dataclasses import dataclass
 from upath import UPath
 from src.io import open_file
+import asyncio
+import ray
+
+
+@ray.remote(max_restarts=-1)
+class AsyncLock:
+    def __init__(self):
+        self._lock = asyncio.Lock()
+        self._holder = None
+
+    async def acquire(self, token: str, timeout_sec: float = None) -> bool:
+        try:
+            if timeout_sec is None:
+                await self._lock.acquire()
+            else:
+                await asyncio.wait_for(self._lock.acquire(), timeout=timeout_sec)
+            self._holder = token
+            return True
+        except asyncio.TimeoutError:
+            return False
+
+    async def release(self, token: str):
+        if self._lock.locked() and self._holder == token:
+            self._holder = None
+            self._lock.release()
+
+    async def is_locked(self) -> bool:
+        return self._lock.locked()
 
 
 @dataclass

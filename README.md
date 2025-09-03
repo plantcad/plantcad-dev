@@ -62,7 +62,6 @@ class PipelineConfig:
 
 @ray.remote # Omit to execute on ray driver instead
 def greeting_step(config: GreetingConfig) -> None:
-    filter_known_warnings()
     message = f"Hello, {config.name}!"
     # Print to console
     logger.info(message)
@@ -77,7 +76,12 @@ class Pipeline:
         return ExecutorStep(
             name="greet",
             fn=greeting_step,
-            config=replace(self.config.greeting, output_path=this_output_path()),
+            config=replace(
+              self.config.greeting,
+              output_path=this_output_path()
+              # Note: output_path_of(self.some_step()) can
+              # be used to access data from any prior step
+            ),
             description="Print a greeting"
         )
 

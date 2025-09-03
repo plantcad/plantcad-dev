@@ -11,7 +11,7 @@ from src.pipelines.plantcad2.evaluation.config import PipelineConfig
 from src.pipelines.plantcad2.evaluation.tasks.evolutionary_constraint.pipeline import (
     EvolutionaryConstraintPipeline,
 )
-from src.utils.logging import filter_warnings, initialize_logging
+from src.utils.logging import filter_known_warnings, initialize_logging
 
 logger = logging.getLogger("ray")
 
@@ -34,7 +34,7 @@ class EvaluationPipeline:
 def main():
     """Main entry point for the evaluation pipeline."""
     initialize_logging()
-    filter_warnings()
+    filter_known_warnings()
 
     logger.info("Starting evaluation pipeline")
 
@@ -58,14 +58,7 @@ def main():
     results = json.loads(
         (UPath(executor.output_paths[step]) / "step.json").read_text(encoding="utf-8")
     )
-    logger.info("Pipeline complete! Summary:")
-    logger.info(f"  Results: {results}")
-    logger.info(f"  ROC AUC: {results['roc_auc']:.4f}")
-    logger.info(f"  Samples: {results['num_samples']}")
-    logger.info(f"  Positive: {results['num_positive']}")
-    logger.info(f"  Negative: {results['num_negative']}")
-
-    logger.info("Evaluation pipeline complete.")
+    logger.info(f"Pipeline complete! Results: {results}")
 
 
 if __name__ == "__main__":

@@ -2,9 +2,9 @@
 
 import logging
 from dataclasses import replace
-import numpy as np
 import pandas as pd
 import ray
+import xarray as xr
 from upath import UPath
 from thalas.execution import ExecutorStep, output_path_of, this_output_path
 
@@ -21,7 +21,7 @@ from src.pipelines.plantcad2.evaluation.common import (
     load_and_downsample_dataset,
     generate_model_logits,
 )
-from src.utils.pipeline import save_step_json, load_step_json
+from src.utils.pipeline import AsyncLock, save_step_json, load_step_json
 
 logger = logging.getLogger("ray")
 
@@ -53,7 +53,6 @@ def downsample_dataset(config: DownsampleDatasetConfig) -> None:
 
 def generate_logits(config: GenerateLogitsConfig) -> None:
     """Generate logits using either fake random data or real model inference."""
-
     logger.info(f"Starting logits generation task; {config=}")
 
     # Load step data from previous step
@@ -82,6 +81,9 @@ def generate_logits(config: GenerateLogitsConfig) -> None:
         # Wrap for distributed processing
         remote_generate_logits = ray.remote(num_gpus=1)(generate_model_logits)
 
+        # Create lock for HF writes
+        lock = AsyncLock.remote()
+
         # Submit tasks for all workers
         futures = []
         for worker_id in range(config.num_workers):
@@ -95,29 +97,28 @@ def generate_logits(config: GenerateLogitsConfig) -> None:
                 simulation_mode=config.simulation_mode,
                 worker_id=worker_id,
                 num_workers=config.num_workers,
+                lock=lock,
             )
             futures.append(future)
 
         # Wait for all tasks to complete and get file paths
         results = ray.get(futures)
 
-        # Combine all worker output files into single logits.tsv
-        combined_logits = []
+        # Combine all worker output files into single logits.zarr
+        worker_logits = []
 
         # Load and combine logits from all worker files
         for worker_file in results:
-            if worker_file.exists():
-                worker_logits = pd.read_csv(worker_file, sep="\t", header=None).values
-                combined_logits.append(worker_logits)
+            worker_logits.append(xr.open_zarr(worker_file))
 
-        if combined_logits:
-            final_logits = np.vstack(combined_logits)
-            logits_path = logits_output_dir / "logits.tsv"
-            pd.DataFrame(final_logits).to_csv(
-                logits_path, sep="\t", header=False, index=False
+        if worker_logits:
+            combined_logits = xr.concat(worker_logits, dim="sample")
+            logits_path = logits_output_dir / "logits.zarr"
+            combined_logits.to_zarr(
+                logits_path, zarr_format=2, consolidated=True, mode="w"
             )
             logger.info(
-                f"Combined {len(combined_logits)} worker outputs into {logits_path}"
+                f"Combined {len(worker_logits)} worker outputs into {logits_path}"
             )
         else:
             raise ValueError("No worker outputs found to combine")
@@ -143,30 +144,16 @@ def generate_scores(config: GenerateScoresConfig) -> None:
 
     # Construct logits path from the previous step's output
     logits_path = UPath(config.input_path) / input_step["logits_relpath"]
-    logits_matrix = pd.read_csv(logits_path, sep="\t", header=None).values
+    logits = xr.open_zarr(logits_path)
 
     token_idx = input_step["token_idx"]
 
-    # Get downsampled dataset path from two steps upstream in pipeline
-    dataset_step_data = load_step_json(UPath(config.dataset_input_path))
-    dataset_path = (
-        UPath(config.dataset_input_path) / dataset_step_data["dataset_relpath"]
-    )
-
-    _, y_true, y_scores = compute_plantcad_scores(
-        dataset_path=dataset_path,
-        logits_matrix=logits_matrix,
-        output_dir=output_path / "scores",
+    predictions = compute_plantcad_scores(
+        logits=logits,
         token_idx=token_idx,
     )
 
     # Save prediction data as parquet
-    predictions = pd.DataFrame(
-        {
-            "y_true": y_true,
-            "y_scores": y_scores,
-        }
-    )
     predictions.to_parquet(output_path / "predictions.parquet")
 
     # Save predictions file location for ROC computation
@@ -189,10 +176,10 @@ def compute_roc(config: ComputeRocConfig) -> None:
     predictions = pd.read_parquet(
         UPath(config.input_path) / input_step["predictions_relpath"]
     )
-    y_true = predictions["y_true"].values
-    y_scores = predictions["y_scores"].values
+    y_true = predictions["label"].values
+    y_score = predictions["plantcad_scores"].values
 
-    results = compute_roc_auc(y_true, y_scores)
+    results = compute_roc_auc(y_true, y_score)
 
     # Save only relevant results for this step (all fields expected by main pipeline)
     output_step = {
@@ -252,7 +239,6 @@ class EvolutionaryConstraintPipeline:
             config=replace(
                 self.steps_config.generate_scores,
                 input_path=output_path_of(self.generate_logits()),
-                dataset_input_path=output_path_of(self.downsample_dataset()),
                 output_path=this_output_path(),
             ),
             description="Generate plantcad scores",

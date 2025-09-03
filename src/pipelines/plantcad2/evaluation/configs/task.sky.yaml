@@ -20,6 +20,7 @@ run: |
   # avoid collisions between SkyPilot Ray and Thalas Ray clusters
   env -i \
     HOME="$HOME" \
+    RAY_DEDUP_LOGS=0 \
     HUGGING_FACE_HUB_TOKEN="$HUGGING_FACE_HUB_TOKEN" \
     SKYPILOT_NODE_IPS="$SKYPILOT_NODE_IPS" \
     SKYPILOT_NODE_RANK="$SKYPILOT_NODE_RANK" \
