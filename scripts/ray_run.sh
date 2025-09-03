@@ -14,6 +14,9 @@ DASHBOARD_PORT=8365         # default: 8265
 DASHBOARD_AGENT_PORT=52465  # default: 52365
 MIN_WORKER_PORT=20002       # default: 10002
 MAX_WORKER_PORT=29999       # default: 19999
+TEMP_DIR=/tmp/ray_plantcad
+PLASMA_DIRECTORY="$HOME/ray_plantcad/plasma"
+OBJECT_SPILLING_DIRECTORY="$HOME/ray_plantcad/spill"
 
 # Check if Ray is already running on the expected port
 if ps aux | grep ray | grep -E "(--gcs_server_port=$GCS_PORT|--gcs-address=.*:$GCS_PORT)" &> /dev/null; then
@@ -26,7 +29,9 @@ else
     ray start --head \
       --disable-usage-stats \
       --include-dashboard true \
-      --temp-dir /tmp/ray_pipeline \
+      --temp-dir $TEMP_DIR \
+      --plasma-directory $PLASMA_DIRECTORY \
+      --object-spilling-directory $OBJECT_SPILLING_DIRECTORY \
       --port $GCS_PORT \
       --ray-client-server-port $CLIENT_PORT \
       --dashboard-port $DASHBOARD_PORT \
@@ -38,6 +43,9 @@ else
     ray start \
       --address $head_ip:$GCS_PORT \
       --disable-usage-stats \
+      --temp-dir $TEMP_DIR \
+      --plasma-directory $PLASMA_DIRECTORY \
+      --object-spilling-directory $OBJECT_SPILLING_DIRECTORY \
       --ray-client-server-port $CLIENT_PORT \
       --dashboard-port $DASHBOARD_PORT \
       --dashboard-agent-listen-port $DASHBOARD_AGENT_PORT \

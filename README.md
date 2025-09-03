@@ -31,16 +31,95 @@ uv sync --extra gpu --extra mamba --group dev  # Mamba requires CUDA
 uv run pre-commit install
 ```
 
+## Pipelines
+
+This example shows how to use [Thalas](https://github.com/Open-Athena/thalas), Draccus, UPath, and Ray to create a simple pipeline for distributed execution:
+
+```python
+"""greeting_pipeline.py"""
+import logging
+import draccus
+import ray
+from upath import UPath
+from pydantic import Field
+from dataclasses import replace
+from pydantic.dataclasses import dataclass
+from thalas.execution import ExecutorStep, ExecutorMainConfig, output_path_of, this_output_path
+from src.exec import executor_main
+from src.log import initialize_logging
+
+logger = logging.getLogger("ray")
+
+@dataclass
+class GreetingConfig:
+    name: str = Field(default=None, description="The name to greet")
+    output_path: str = Field(default=None, description="The path to write the greeting to")
+
+@dataclass
+class PipelineConfig:
+    greeting: GreetingConfig
+    executor: ExecutorMainConfig
+
+@ray.remote # Omit to execute on ray driver instead
+def greeting_step(config: GreetingConfig) -> None:
+    message = f"Hello, {config.name}!"
+    # Print to console
+    logger.info(message)
+    # Write to output path on Hugging Face
+    (UPath(config.output_path) / "greeting.txt").write_text(message)
+
+class Pipeline:
+    def __init__(self, config: PipelineConfig):
+        self.config = config
+
+    def greet(self) -> ExecutorStep:
+        return ExecutorStep(
+            name="greet",
+            fn=greeting_step,
+            config=replace(self.config.greeting, output_path=this_output_path()),
+            description="Print a greeting"
+        )
+
+def main():
+    initialize_logging()
+    cfg = draccus.parse(config_class=PipelineConfig)
+    pipeline = SimplePipeline(cfg)
+    executor_main(cfg.executor, [pipeline.greet()], init_logging=False)
+
+if __name__ == "__main__":
+    main()
+```
+
+Run it with:
+
+```bash
+# Create a config file
+cat > greeting_pipeline.yaml << 'EOF'
+greeting:
+  name: "World"
+executor:
+  # Set the HF dataset into which data from all steps will be saved
+  prefix: "hf://datasets/plantcad/_dev_greeting_pipeline"
+EOF
+
+# Run the pipeline
+uv run python greeting_pipeline.py \
+  --config_path greeting_pipeline.yaml \
+  --greeting.name "PlantCAD"
+```
+
+
 ## Execution
 
 ### Local
 
-These examples demonstrate how to run a pipeline using the [Marin execution framework](https://github.com/marin-community/marin/blob/main/docs/tutorials/executor-101.md) (extracted to [Thalas](https://github.com/Open-Athena/thalas)):
+This example shows how to run existing pipelines:
 
 ```bash
 # Activate the virtual environment
 source .venv/bin/activate
 
+# Path to pipeline config
 CONFIG=src/pipelines/plantcad2/evaluation/configs/config.yaml
 
 # Execute the evaluation pipeline (prefix is defined in config file)
@@ -49,11 +128,6 @@ python -m src.pipelines.plantcad2.evaluation.pipeline --config_path $CONFIG
 # Force re-run of failed steps
 python -m src.pipelines.plantcad2.evaluation.pipeline \
   --config_path $CONFIG --executor.force_run_failed true
-
-# Clear all pipeline data and start fresh (extract prefix from config)
-PREFIX=$(yq -r '.executor.prefix' $CONFIG)
-rm -rf $PREFIX
-python -m src.pipelines.plantcad2.evaluation.pipeline --config_path $CONFIG
 
 # Run the pipeline without "simulation mode" (requires a GPU when false)
 python -m src.pipelines.plantcad2.evaluation.pipeline \
@@ -64,7 +138,7 @@ python -m src.pipelines.plantcad2.evaluation.pipeline \
 
 ### Remote (Lambda)
 
-This example shows how to create a Lambda cluster and run a pipeline on it.
+This example shows how to create a Lambda cluster and run a pipeline on it:
 
 ```bash
 # Create Lambda API key at https://cloud.lambda.ai/api-keys/cloud-api
@@ -101,7 +175,7 @@ ARGS="--executor.force_run_failed=true" sky exec pc-dev $CONFIG_PATH/task.sky.ya
 
 ### Adding dependencies
 
-To add new dependencies in a running cluster, note that you can simply run the cluster launch command again.  SkyPilot will recognize the cluster exists and then issue the same setup commands to all the nodes.  In this case, those commands include a `uv sync`.  I.e. you can do this:
+To add new dependencies in a running cluster, you can simply run the cluster launch command again.  SkyPilot will recognize the cluster exists and then issue the same setup commands to all the nodes.  In this case, those commands include a `uv sync`.  I.e. you can do this:
 
 ```bash
 uv add universal-pathlib==0.2.6
