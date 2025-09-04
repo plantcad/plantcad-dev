@@ -15,8 +15,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
-from src.io import upload, hf_repo_lock
-from src.utils.pipeline import AsyncLock
+import ray
 import torch
 import xarray as xr
 from upath import UPath
@@ -24,10 +23,10 @@ from datasets import load_dataset
 from numpy.typing import NDArray
 from sklearn.metrics import auc, roc_curve
 from torch.utils.data import DataLoader
-
-
 from src.hub import load_model_for_masked_lm, load_tokenizer
 from src.pipelines.plantcad2.evaluation.data import SequenceDataset
+from src.io.api import read_pandas_parquet, write_pandas_parquet, write_xarray_netcdf
+from src.io.hf import lock_hf_path
 
 
 logger = logging.getLogger("ray")
@@ -44,7 +43,7 @@ def simulate_logits(df: pd.DataFrame) -> xr.Dataset:
     Returns
     -------
     xr.Dataset
-        Dataset with 'sequences' and 'logits' variables, indexed by 'sample' dimension
+        Dataset with 'sequence' and 'logit' variables, indexed by 'samples' dimension
     """
     if len(df) == 0:
         logger.warning("No data provided")
@@ -63,11 +62,11 @@ def simulate_logits(df: pd.DataFrame) -> xr.Dataset:
 
     return xr.Dataset(
         {
-            "sequences": ("sample", sequences),
-            "logits": (("sample", "nucleotide"), logits_matrix),
-            "labels": ("sample", labels),
+            "sequence": ("samples", sequences),
+            "logit": (("samples", "nucleotides"), logits_matrix),
+            "label": ("samples", labels),
         },
-        coords={"nucleotide": nucleotides},
+        coords={"nucleotides": nucleotides},
     )
 
 
@@ -96,7 +95,7 @@ def generate_logits(
     Returns
     -------
     xr.Dataset
-        Dataset with 'sequences' and 'logits' variables, indexed by 'sample' dimension
+        Dataset with 'sequence' and 'logit' variables, indexed by 'samples' dimension
     """
     if len(df) == 0:
         logger.warning("No data provided")
@@ -156,11 +155,11 @@ def generate_logits(
 
     return xr.Dataset(
         {
-            "sequences": ("sample", sequences),
-            "logits": (("sample", "nucleotide"), logits_matrix),
-            "labels": ("sample", labels),
+            "sequence": ("samples", sequences),
+            "logit": (("samples", "nucleotides"), logits_matrix),
+            "label": ("samples", labels),
         },
-        coords={"nucleotide": nucleotides},
+        coords={"nucleotides": nucleotides},
     )
 
 
@@ -282,7 +281,7 @@ def load_and_downsample_dataset(
         logger.info(f"Downsampled to: {len(df)} samples")
 
     dataset_path = dataset_dir / f"downsampled_{dataset_split}.parquet"
-    df.to_parquet(dataset_path)
+    write_pandas_parquet(df, dataset_path)
     logger.info(f"Saved downsampled dataset to: {dataset_path}")
 
     return dataset_path, len(df)
@@ -298,14 +297,14 @@ def generate_model_logits(
     simulation_mode: bool = True,
     worker_id: int | None = None,
     num_workers: int | None = None,
-    lock: AsyncLock | None = None,
+    lock: ray.actor.ActorHandle | None = None,
 ) -> UPath:
     """Generate logits using either fake random data or real model inference.
 
     Parameters
     ----------
     dataset_path
-        Path to the parquet dataset containing columns `sequences` and a name/id column.
+        Path to the parquet dataset containing columns `sequence` and a name/id column.
     output_dir
         Directory where outputs will be written. Must exist.
     model_path
@@ -323,7 +322,7 @@ def generate_model_logits(
     num_workers
         Total number of workers for distributed processing.
     lock
-        Lock for synchronization of HF writes.
+        Ray actor handle for HF write locking (optional).
 
     Returns
     -------
@@ -336,7 +335,7 @@ def generate_model_logits(
         if num_workers is None:
             raise ValueError("num_workers must be provided")
 
-    df = pd.read_parquet(dataset_path)
+    df = read_pandas_parquet(dataset_path)
     _validate_sequence_lengths(df)
 
     logger.info(f"Processing {len(df)} sequences")
@@ -346,8 +345,8 @@ def generate_model_logits(
     if simulation_mode:
         logger.info("Generating fake logits for testing (simulation_mode=True)")
         logits = simulate_logits(df)
-        logits_path = output_dir / "logits.zarr"
-        logits.to_zarr(logits_path, zarr_format=2, consolidated=True, mode="w")
+        logits_path = output_dir / "logits.nc"
+        write_xarray_netcdf(logits, logits_path)
     else:
         logger.info("Generating real logits using pre-trained model")
 
@@ -365,18 +364,13 @@ def generate_model_logits(
             batch_size=batch_size,
         )
 
-        logits_path = output_dir / f"logits_{worker_id:05d}.zarr"
+        logits_path = output_dir / f"logits_{worker_id:05d}.nc"
 
-        with hf_repo_lock(logits_path, lock) as locked_path:
-            logger.info(f"Writing logits to zarr file at {locked_path}")
-            upload(
-                locked_path,
-                lambda temp_path: logits.to_zarr(
-                    temp_path, zarr_format=2, consolidated=True, mode="w"
-                ),
-            )
+        with lock_hf_path(logits_path, lock) as locked_path:
+            logger.info(f"Writing logits to netcdf file at {locked_path}")
+            write_xarray_netcdf(logits, locked_path)
 
-    logger.info(f"Generated logits for {logits.sizes['sample']} sequences")
+    logger.info(f"Generated logits for {logits.sizes['samples']} sequences")
 
     return logits_path
 
@@ -390,22 +384,22 @@ def compute_plantcad_scores(
     Parameters
     ----------
     logits
-        Xarray dataset containing 'sequences', 'logits', and 'labels' variables.
+        Xarray dataset containing 'sequence', 'logit', and 'label' variables.
     token_idx
         Index of the masked token position used to choose the reference base.
 
     Returns
     -------
     pd.DataFrame
-        DataFrame with sequences, labels, and computed PlantCAD scores.
+        DataFrame with sequence, labels, and computed PlantCAD scores.
     """
 
     logger.info("Computing PlantCAD scores from logits")
 
-    sequences = logits.sequences.values
-    logits_matrix = logits.logits.values
-    nucleotides = logits.nucleotide.values
-    labels = logits.labels.values
+    sequences = logits.sequence.values
+    logits_matrix = logits.logit.values
+    nucleotides = logits.nucleotides.values
+    labels = logits.label.values
 
     # Create mapping from nucleotide to index
     nuc_to_idx = {nuc: i for i, nuc in enumerate(nucleotides)}
@@ -430,9 +424,9 @@ def compute_plantcad_scores(
     # Create scored dataset
     df = pd.DataFrame(
         {
-            "sequences": sequences,
+            "sequence": sequences,
             "label": labels,
-            "plantcad_scores": scores,
+            "plantcad_score": scores,
         }
     )
 

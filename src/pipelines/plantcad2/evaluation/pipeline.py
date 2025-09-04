@@ -5,13 +5,13 @@ import logging
 import draccus
 from upath import UPath
 from thalas.execution import ExecutorStep
-from src.io import initialize_path
+from src.io.hf import initialize_hf_path
 from src.exec import executor_main
 from src.pipelines.plantcad2.evaluation.config import PipelineConfig
 from src.pipelines.plantcad2.evaluation.tasks.evolutionary_constraint.pipeline import (
     EvolutionaryConstraintPipeline,
 )
-from src.utils.logging import filter_known_warnings, initialize_logging
+from src.utils.logging_utils import filter_known_warnings, initialize_logging
 
 logger = logging.getLogger("ray")
 
@@ -25,6 +25,10 @@ class EvaluationPipeline:
         self.evolutionary_constraint_pipeline = EvolutionaryConstraintPipeline(
             self.config
         )
+
+    def run_local_simulation(self) -> bool:
+        """Check if the pipeline is running in local simulation mode."""
+        return self.config.tasks.evolutionary_constraint.generate_logits.simulation_mode
 
     def evolutionary_constraint(self) -> ExecutorStep:
         """Run the evolutionary constraint evaluation task."""
@@ -43,7 +47,7 @@ def main():
 
     # If the executor prefix is on HF, create the repository for it first or Thalas will fail with, e.g.:
     # > FileNotFoundError: plantcad/_dev_pc2_eval/evolutionary_downsample_dataset-be132f/.executor_info (repository not found).
-    initialize_path(cfg.executor.prefix)
+    initialize_hf_path(cfg.executor.prefix)
 
     # Initialize the pipeline
     pipeline = EvaluationPipeline(cfg)

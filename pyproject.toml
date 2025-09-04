@@ -22,7 +22,8 @@ dependencies = [
   "ray[default,client]==2.45",
   "universal-pathlib==0.2.6",
   "xarray==2025.8.0",
-  "zarr==3.1.2",
+  "netcdf4==1.7.2",
+  "dask[array]>=2025.7.0",
 ]
 
 [project.optional-dependencies]
@@ -89,4 +90,9 @@ dev = [
 ]
 slurm = [
   "submitit>=1.5.1",
+]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+  "ignore:UPath 'hf' filesystem not explicitly implemented:UserWarning:upath.core",
 ]

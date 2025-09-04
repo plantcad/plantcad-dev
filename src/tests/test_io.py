@@ -1,5 +1,5 @@
 import pytest
-from src.io import HfPath, hf_repo, hf_internal_repo
+from src.io import HfPath, hf_repo
 
 
 class TestHfPath:
@@ -178,6 +178,53 @@ class TestHfPath:
         assert file_repo.to_string() == "datasets/my-org/dataset/data/train.csv"
         assert file_repo.to_url() == "hf://datasets/my-org/dataset/data/train.csv"
 
+    def test_from_upath(self):
+        """Test HfPath.from_upath() method."""
+        from upath import UPath
+
+        # Test with dataset repository path
+        upath = UPath("datasets/huggingface/squad/train.json", protocol="hf")
+        repo = HfPath.from_upath(upath)
+        assert repo.entity == "huggingface"
+        assert repo.name == "squad"
+        assert repo.type == "dataset"
+        assert repo.path_in_repo == "train.json"
+
+        # Test with model repository (no file path)
+        model_upath = UPath("microsoft/DialoGPT-medium", protocol="hf")
+        model_repo = HfPath.from_upath(model_upath)
+        assert model_repo.entity == "microsoft"
+        assert model_repo.name == "DialoGPT-medium"
+        assert model_repo.type == "model"
+        assert model_repo.path_in_repo is None
+
+    def test_to_repo(self):
+        """Test HfPath.to_repo() method."""
+        path = HfPath("org", "dataset", "dataset", False, "data/train.csv")
+        repo = path.to_repo()
+        assert repo.entity == "org"
+        assert repo.name == "dataset"
+        assert repo.type == "dataset"
+        assert not repo.internal
+        assert not hasattr(repo, "path_in_repo")
+
+    def test_split_path_in_repo(self):
+        """Test HfPath.split_path_in_repo() method."""
+        # Test with nested path
+        path = HfPath("org", "repo", "dataset", False, "data/train.csv")
+        result = path.split_path_in_repo()
+        assert result == ("data", "train.csv")
+
+        # Test with file only (no subfolder)
+        path = HfPath("org", "repo", "dataset", False, "file.txt")
+        result = path.split_path_in_repo()
+        assert result == (None, "file.txt")
+
+        # Test with no path_in_repo
+        path = HfPath("org", "repo", "dataset", False, None)
+        result = path.split_path_in_repo()
+        assert result == (None, None)
+
 
 class TestFactoryFunctions:
     """Test cases for factory functions."""
@@ -185,12 +232,6 @@ class TestFactoryFunctions:
     def test_hf_repo(self):
         """Test hf_repo factory function."""
         repo = hf_repo("test")
-        assert repo.internal is False
-        assert repo.type == "dataset"
-
-    def test_hf_internal_repo(self):
-        """Test hf_internal_repo factory function."""
-        repo = hf_internal_repo("test")
         assert repo.internal is True
         assert repo.type == "dataset"
 

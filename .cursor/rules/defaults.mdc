@@ -14,6 +14,7 @@ alwaysApply: true
 ## Project
 - Manage all dependecies via `uv` and `pyproject.toml`
 - Use `uv run pre-commit` for linting
+- Do not put ANY code in `__init__.py` files unless absolutely necessary
 
 ## Execution
 - Unless instructed otherwise, execute all code using `source .venv/bin/activate` first, followed by relevant commands (do not use `uv run` by default)
@@ -25,7 +26,7 @@ alwaysApply: true
   - Use type hints according to the standard *after* to Python 3.9, i.e. `list`, `dict`, `int | None`, etc. rather than `List`, `Dict`, `Optional[int]`
 - Use early returns to avoid deeply nested if statements
 - Default to throwing errors rather than implementing fallback logic that hides underlying issues
-- With Xarray, use singular names for dimensions (e.g. `sample`) and plural names for data variables (e.g. `samples`)
+- With Xarray, use plural names for dimensions (e.g. `samples`) and singular names for data variables (e.g. `sample`)
 
 ## Imports
 - Use absolute imports for project modules, e.g. `from src.module import ...`

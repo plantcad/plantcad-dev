@@ -2,9 +2,7 @@
 
 import logging
 from dataclasses import replace
-import pandas as pd
 import ray
-import xarray as xr
 from upath import UPath
 from thalas.execution import ExecutorStep, output_path_of, this_output_path
 
@@ -21,7 +19,13 @@ from src.pipelines.plantcad2.evaluation.common import (
     load_and_downsample_dataset,
     generate_model_logits,
 )
-from src.utils.pipeline import AsyncLock, save_step_json, load_step_json
+from src.utils.pipeline_utils import save_step_json, load_step_json
+from src.io.hf import get_hf_lock
+from src.io.api import (
+    read_pandas_parquet,
+    write_pandas_parquet,
+    read_xarray_mfdataset,
+)
 
 logger = logging.getLogger("ray")
 
@@ -78,11 +82,11 @@ def generate_logits(config: GenerateLogitsConfig) -> None:
             simulation_mode=config.simulation_mode,
         )
     else:
+        # Get the HF lock before creating remote tasks
+        lock = get_hf_lock()
+
         # Wrap for distributed processing
         remote_generate_logits = ray.remote(num_gpus=1)(generate_model_logits)
-
-        # Create lock for HF writes
-        lock = AsyncLock.remote()
 
         # Submit tasks for all workers
         futures = []
@@ -104,24 +108,16 @@ def generate_logits(config: GenerateLogitsConfig) -> None:
         # Wait for all tasks to complete and get file paths
         results = ray.get(futures)
 
-        # Combine all worker output files into single logits.zarr
-        worker_logits = []
+        # Verify that worker files were created
+        if not results:
+            raise ValueError("No worker outputs found")
 
-        # Load and combine logits from all worker files
-        for worker_file in results:
-            worker_logits.append(xr.open_zarr(worker_file))
+        logger.info(
+            f"Generated {len(results)} worker logits files in {logits_output_dir}"
+        )
 
-        if worker_logits:
-            combined_logits = xr.concat(worker_logits, dim="sample")
-            logits_path = logits_output_dir / "logits.zarr"
-            combined_logits.to_zarr(
-                logits_path, zarr_format=2, consolidated=True, mode="w"
-            )
-            logger.info(
-                f"Combined {len(worker_logits)} worker outputs into {logits_path}"
-            )
-        else:
-            raise ValueError("No worker outputs found to combine")
+        # Use the directory path for the next step (files will be combined when read)
+        logits_path = logits_output_dir
 
     # Save logits output location and token index for next step
     output_step = {
@@ -144,7 +140,7 @@ def generate_scores(config: GenerateScoresConfig) -> None:
 
     # Construct logits path from the previous step's output
     logits_path = UPath(config.input_path) / input_step["logits_relpath"]
-    logits = xr.open_zarr(logits_path)
+    logits = read_xarray_mfdataset(logits_path, concat_dim="samples")
 
     token_idx = input_step["token_idx"]
 
@@ -154,7 +150,7 @@ def generate_scores(config: GenerateScoresConfig) -> None:
     )
 
     # Save prediction data as parquet
-    predictions.to_parquet(output_path / "predictions.parquet")
+    write_pandas_parquet(predictions, output_path / "predictions.parquet")
 
     # Save predictions file location for ROC computation
     output_step = {
@@ -173,11 +169,11 @@ def compute_roc(config: ComputeRocConfig) -> None:
     input_step = load_step_json(UPath(config.input_path))
 
     # Load prediction data from parquet
-    predictions = pd.read_parquet(
+    predictions = read_pandas_parquet(
         UPath(config.input_path) / input_step["predictions_relpath"]
     )
     y_true = predictions["label"].values
-    y_score = predictions["plantcad_scores"].values
+    y_score = predictions["plantcad_score"].values
 
     results = compute_roc_auc(y_true, y_score)
 

@@ -5,7 +5,7 @@ from pydantic.dataclasses import dataclass
 from typing_extensions import Self
 from thalas.execution import ExecutorMainConfig
 
-from src.utils.pipeline import BaseStepConfig
+from src.utils.pipeline_utils import BaseStepConfig
 
 
 @dataclass
@@ -39,7 +39,7 @@ class GenerateLogitsConfig(BaseStepConfig):
         description="The path of the pre-trained model to use",
     )
 
-    device: str = Field(default="cuda:0", description="The device to run the model")
+    device: str = Field(default="cuda", description="The device to run the model")
     batch_size: int = Field(
         default=128, description="The batch size for the model", gt=0
     )
