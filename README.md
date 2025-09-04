@@ -260,11 +260,11 @@ import pandas as pd
 
 repo = io.hf_repo("plantcad/training_dataset", internal=False)
 repo
-# HfRepo(entity='plantcad', name='plantcad/training_dataset', type='dataset', internal=False)
-repo.url()
+# HfPath(entity='plantcad', name='plantcad/training_dataset', type='dataset', internal=False, path_in_repo=None)
+repo.to_url()
 # 'hf://datasets/plantcad/plantcad/training_dataset'
 
-io.hf_repo("plantcad/training_dataset", internal=True).url()
+io.hf_repo("plantcad/training_dataset", internal=True).to_url()
 # 'hf://datasets/plantcad/_dev_training_dataset'
 ```
 
@@ -278,7 +278,7 @@ from upath import UPath
 
 # Create repo reference (uses "plantcad" as default entity)
 repo = io.hf_repo("test-dataset", type="dataset")
-repo.url()
+repo.to_url()
 # 'hf://datasets/plantcad/test-dataset'
 
 # Create the dataset repository on HuggingFace Hub
@@ -287,12 +287,13 @@ io.create_on_hub(repo, private=False)
 # Write with explicit filesystem instance
 fs = io.filesystem()
 content = "This is a test data file."
-with fs.open(repo.url("data.txt"), "w") as f:
+path = repo.join("data.txt")
+with fs.open(path.to_url(), "w") as f:
     f.write(content)
 
 # Write via UPath with filesystem implicit in url (i.e. "hf://")
-path = UPath(repo.url("data.txt"))
-path.write_text(content)
+upath = path.to_upath()
+upath.write_text(content)
 ```
 
 

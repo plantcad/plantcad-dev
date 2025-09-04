@@ -101,16 +101,16 @@ def initialize_path(
     if path.exists():
         return
 
-    hf_repo = HfRepo.from_url(path)
+    hf_path = HfPath.from_url(path)
     logger.info(
-        f"Creating repository {hf_repo.repo_id()} on Hugging Face for path {path}"
+        f"Creating repository {hf_path.repo_id()} on Hugging Face for path {path}"
     )
     create_on_hub(hf_repo, exist_ok=True)
 
     # Poll for repository existence after creation
     for attempt in range(1, max_attempts + 1):
         # It is essential to recreate the UPath object to avoid caching of existence status
-        repo_path = UPath(hf_repo.url())
+        repo_path = UPath(hf_repo.to_url())
         logger.info(
             f"Polling for repository ({repo_path}) existence (attempt {attempt}/{max_attempts})"
         )
@@ -131,14 +131,21 @@ def initialize_path(
 
 
 @dataclass
-class HfRepo:
-    """Represents a Hugging Face Hub repository with convenient path and URL generation.
+class HfPath:
+    """Represents a Hugging Face Hub path with convenient path and URL generation.
 
-    This class provides a structured way to work with Hugging Face repositories,
+    This class provides a structured way to work with Hugging Face paths,
     generating paths and fsspec-compatible URLs for use with HfFileSystem. It is similar to
-    `RepoUrl` from the HfApi but supports internal naming conventions as well as parsing
-    of repo names from repo owners; see:
-    https://github.com/huggingface/huggingface_hub/blob/main/src/huggingface_hub/hf_api.py#L536
+    `RepoUrl` from the HfApi but supports:
+
+    - Naming conventions for "internal" vs "external" repositories
+    - Paths within a repository
+    - Parsing of repository IDs (e.g. "my-org/my-repo" -> {entity="my-org", name="my-repo"})
+
+    For related implementations, see:
+
+    - https://github.com/huggingface/huggingface_hub/blob/8a6d4e3e8d18c7ba4ecf8b2e9a23138e48257330/src/huggingface_hub/hf_api.py#L536
+    - https://github.com/huggingface/huggingface_hub/blob/8a6d4e3e8d18c7ba4ecf8b2e9a23138e48257330/src/huggingface_hub/hf_file_system.py#L139
 
     Attributes
     ----------
@@ -150,15 +157,18 @@ class HfRepo:
         Repository type ("dataset", "model", or "space")
     internal : bool
         Whether to use internal naming convention (adds _dev_ prefix, e.g. "_dev_my-dataset")
+    path_in_repo : str | None
+        Optional path within the repository (e.g., "data/train.csv")
     """
 
     entity: str
     name: str
     type: RepoType
     internal: bool
+    path_in_repo: str | None = None
 
     def repo_id(self) -> str:
-        """Generate the repository ID for this HfRepo.
+        """Generate the repository ID for this HfPath.
 
         Returns
         -------
@@ -167,12 +177,12 @@ class HfRepo:
 
         Examples
         --------
-        >>> repo = HfRepo(
+        >>> repo = HfPath(
         ...     entity="my-org", name="dataset", type="dataset", internal=False
         ... )
         >>> repo.repo_id()
         'my-org/dataset'
-        >>> repo_internal = HfRepo(
+        >>> repo_internal = HfPath(
         ...     entity="my-org", name="dataset", type="dataset", internal=True
         ... )
         >>> repo_internal.repo_id()
@@ -181,27 +191,29 @@ class HfRepo:
         name = f"{INTERNAL_PREFIX}{self.name}" if self.internal else self.name
         return f"{self.entity}/{name}"
 
-    def path(self, *path: str) -> str:
-        """Generate a repository path with optional subdirectories.
-
-        Parameters
-        ----------
-        *path : str
-            Optional path components within the repository
+    def to_string(self) -> str:
+        """Generate a repository path including any path_in_repo.
 
         Returns
         -------
         str
-            A formatted path string for the repository
+            A formatted path string for the repository and optional file path
 
         Examples
         --------
-        >>> repo = HfRepo(
+        >>> repo = HfPath(
         ...     entity="my-org", name="dataset", type="dataset", internal=True
         ... )
-        >>> repo.path()
+        >>> repo.to_string()
         'datasets/my-org/_dev_dataset'
-        >>> repo.path("data", "train.csv")
+        >>> repo_with_file = HfPath(
+        ...     entity="my-org",
+        ...     name="dataset",
+        ...     type="dataset",
+        ...     internal=True,
+        ...     path_in_repo="data/train.csv",
+        ... )
+        >>> repo_with_file.to_string()
         'datasets/my-org/_dev_dataset/data/train.csv'
         """
         name = f"{INTERNAL_PREFIX}{self.name}" if self.internal else self.name
@@ -211,19 +223,16 @@ class HfRepo:
             k: v for k, v in REPO_PATHS_MAPPING.items() if k != REPO_TYPE_MODEL
         }
         prefix = [type_to_prefix[self.type]] if self.type in type_to_prefix else []
-        parts = prefix + [self.entity, name] + list(path)
+        parts = prefix + [self.entity, name]
+        if self.path_in_repo:
+            parts.append(self.path_in_repo)
         return "/".join(parts)
 
-    def url(self, *path: str) -> str:
+    def to_url(self) -> str:
         """Generate an fsspec-compatible URL for use with HfFileSystem.
 
         See https://huggingface.co/docs/huggingface_hub/main/en/guides/hf_file_system#integrations
         for details on URL formatting.
-
-        Parameters
-        ----------
-        *path : str
-            Optional path components within the repository
 
         Returns
         -------
@@ -232,136 +241,191 @@ class HfRepo:
 
         Examples
         --------
-        >>> repo = HfRepo(entity="my-org", name="model", type="model", internal=False)
-        >>> repo.url()
+        >>> repo = HfPath(entity="my-org", name="model", type="model", internal=False)
+        >>> repo.to_url()
         'hf://my-org/model'
-        >>> repo.url("config.json")
+        >>> repo_with_file = HfPath(
+        ...     entity="my-org",
+        ...     name="model",
+        ...     type="model",
+        ...     internal=False,
+        ...     path_in_repo="config.json",
+        ... )
+        >>> repo_with_file.to_url()
         'hf://my-org/model/config.json'
         >>> # Use with pandas
         >>> import pandas as pd
-        >>> df = pd.read_csv(repo.url("data.csv"))
+        >>> path = HfPath(
+        ...     entity="my-org",
+        ...     name="dataset",
+        ...     type="dataset",
+        ...     internal=False,
+        ...     path_in_repo="data.csv",
+        ... )
+        >>> df = pd.read_csv(path.to_url())
         """
-        return UPath(self.path(*path), protocol="hf").as_uri()
+        return UPath(self.to_string(), protocol="hf").as_uri()
+
+    def to_upath(self) -> UPath:
+        """Generate a UPath object for use with filesystem operations.
+
+        Returns
+        -------
+        UPath
+            A UPath object with hf:// protocol for direct filesystem operations
+
+        Examples
+        --------
+        >>> repo = HfPath(
+        ...     entity="my-org", name="dataset", type="dataset", internal=False
+        ... )
+        >>> upath = repo.to_upath()
+        >>> upath.exists()  # Check if repository exists
+        False
+        >>> path = repo.join("data.csv")
+        >>> upath = path.to_upath()
+        >>> with upath.open("r") as f:
+        ...     content = f.read()  # Read file content directly
+        ...
+        """
+        return UPath(self.to_string(), protocol="hf")
+
+    def join(self, *path: str) -> "HfPath":
+        """Create a new HfPath with the given path components joined to path_in_repo.
+
+        This method creates a new HfPath instance with the same repository information
+        but with the path_in_repo set to the joined path components.
+
+        Parameters
+        ----------
+        *path : str
+            Path components to join (e.g., "data", "train.csv")
+
+        Returns
+        -------
+        HfPath
+            A new HfPath instance with the joined path_in_repo
+
+        Examples
+        --------
+        >>> repo = HfPath(
+        ...     entity="my-org", name="dataset", type="dataset", internal=False
+        ... )
+        >>> path = repo.join("data", "train.csv")
+        >>> path.path_in_repo
+        'data/train.csv'
+        >>> path.to_url()
+        'hf://datasets/my-org/dataset/data/train.csv'
+
+        >>> # Overwrites existing path_in_repo
+        >>> base_path = HfPath(
+        ...     entity="my-org",
+        ...     name="dataset",
+        ...     type="dataset",
+        ...     internal=False,
+        ...     path_in_repo="old/path",
+        ... )
+        >>> path = base_path.join("subfolder", "file.txt")
+        >>> path.path_in_repo
+        'subfolder/file.txt'
+        """
+        # Create new path_in_repo from the provided path components, overwriting any existing path_in_repo
+        new_path_in_repo = "/".join(path) if path else None
+
+        return HfPath(
+            entity=self.entity,
+            name=self.name,
+            type=self.type,
+            internal=self.internal,
+            path_in_repo=new_path_in_repo,
+        )
 
     @staticmethod
-    def from_url(url: str) -> "HfRepo":
-        """Create an HfRepo instance from a repository URL.
+    def from_url(url: str) -> "HfPath":
+        """Create an HfPath instance from a repository URL.
 
         Parameters
         ----------
         url : str
-            Repository URL using hf:// protocol (e.g., "hf://datasets/org/repo-name")
+            Repository URL (e.g., "hf://datasets/org/repo-name/file.csv")
 
         Returns
         -------
-        HfRepo
-            An HfRepo instance with internal=False
+        HfPath
+            An HfPath instance with path_in_repo set if the URL includes a file path
 
         Raises
         ------
         ValueError
-            If the URL is invalid, not using hf:// protocol, or cannot be parsed
+            If the URL cannot be parsed
 
         Examples
         --------
-        >>> repo = HfRepo.from_url("hf://microsoft/DialoGPT-medium")
-        HfRepo(entity='microsoft', name='DialoGPT-medium', type='model', internal=False)
+        >>> repo = HfPath.from_url("hf://microsoft/DialoGPT-medium")
+        HfPath(entity='microsoft', name='DialoGPT-medium', type='model', internal=False, path_in_repo=None)
 
-        >>> HfRepo.from_url("hf://datasets/huggingface/squad")
-        HfRepo(entity='huggingface', name='squad', type='dataset', internal=False)
+        >>> HfPath.from_url("hf://datasets/huggingface/squad/train.json")
+        HfPath(entity='huggingface', name='squad', type='dataset', internal=False, path_in_repo='train.json')
 
-        >>> HfRepo.from_url("hf://spaces/gradio/calculator")
-        HfRepo(entity='gradio', name='calculator', type='space', internal=False)
+        >>> HfPath.from_url("hf://spaces/gradio/calculator/app.py")
+        HfPath(entity='gradio', name='calculator', type='space', internal=False, path_in_repo='app.py')
 
-        >>> HfRepo.from_url("hf://plantcad/_dev_training_dataset")  # "internal" model
-        HfRepo(entity='plantcad', name='training_dataset', type='model', internal=True)
-
-        >>> HfRepo.from_url("hf://plantcad/training_dataset")  # "external" model
-        HfRepo(entity='plantcad', name='training_dataset', type='model', internal=False)
+        >>> HfPath.from_url("hf://plantcad/_dev_training_dataset")  # "internal" model
+        HfPath(entity='plantcad', name='training_dataset', type='model', internal=True, path_in_repo=None)
         """
         try:
-            # Convert to UPath and validate protocol
-            path = UPath(url)
-            if path.protocol != "hf":
-                raise ValueError(
-                    f"Only hf:// protocol is supported, got: {path.protocol}"
-                )
+            # Strip protocol
+            # Note: We could use fsspec.core.strip_protocol for this, but it only splits on "://" anyhow:
+            # https://github.com/fsspec/filesystem_spec/blob/f84b99f0d1f079f990db1a219b74df66ab3e7160/fsspec/core.py#L551-L552
+            path = url
+            if "://" in url:
+                path = url.split("://", 1)[1]
 
-            # Get path components
-            parts = [p for p in path.path.split("/")]
+            # Split path components
+            parts = path.split("/")
 
             if len(parts) < 2:
                 raise ValueError(
                     f"URL path must have at least 2 components, got: {parts}"
                 )
 
-            # Parse repo type and extract entity/name
+            # Parse repo type and extract entity/name/path_in_repo
             if parts[0] in REPO_TYPES_MAPPING:
                 if len(parts) < 3:
                     raise ValueError(f"Not enough components for typed repo: {parts}")
-                repo_type, entity, name = (
-                    REPO_TYPES_MAPPING[parts[0]],
-                    parts[1],
-                    parts[2],
-                )
+                repo_type = REPO_TYPES_MAPPING[parts[0]]
+                entity = parts[1]
+                name = parts[2]
+                path_in_repo_parts = parts[3:] if len(parts) > 3 else []
             else:
-                repo_type, entity, name = REPO_TYPE_MODEL, parts[0], parts[1]
+                repo_type = REPO_TYPE_MODEL
+                entity = parts[0]
+                name = parts[1]
+                path_in_repo_parts = parts[2:] if len(parts) > 2 else []
 
             # Handle internal naming
             internal = name.startswith(INTERNAL_PREFIX)
             if internal:
                 name = name.removeprefix(INTERNAL_PREFIX)
 
-            return HfRepo(entity=entity, name=name, type=repo_type, internal=internal)
+            # Construct path_in_repo
+            path_in_repo = "/".join(path_in_repo_parts) if path_in_repo_parts else None
+
+            return HfPath(
+                entity=entity,
+                name=name,
+                type=repo_type,
+                internal=internal,
+                path_in_repo=path_in_repo,
+            )
         except Exception as e:
             raise ValueError(f"Failed to parse repository URL '{url}': {e}") from e
-
-    def parse_path(self, url: str) -> str:
-        """Extract the path within the repository from a full URL.
-
-        This method takes a full URL and returns the relative path within this
-        repository by stripping the repository's base URL prefix.
-
-        Parameters
-        ----------
-        url : str
-            Full URL that should start with this repository's base URL
-
-        Returns
-        -------
-        str
-            The path within the repository (path_in_repo)
-
-        Raises
-        ------
-        ValueError
-            If the URL doesn't start with this repository's base URL
-
-        Examples
-        --------
-        >>> repo = HfRepo(
-        ...     entity="my-org", name="dataset", type="dataset", internal=False
-        ... )
-        >>> repo.parse_path("hf://datasets/my-org/dataset/data/train.csv")
-        'data/train.csv'
-        >>> repo.parse_path("hf://datasets/my-org/dataset/")
-        ''
-        """
-        prefix = self.url()
-        if not url.startswith(prefix):
-            raise ValueError(
-                f"URL '{url}' does not start with repository prefix '{prefix}'"
-            )
-
-        # Strip the prefix and any leading slash
-        path_in_repo = url.removeprefix(prefix).lstrip("/")
-        return path_in_repo
 
 
 def hf_internal_repo(
     name: str, entity: str = HF_ENTITY, type: RepoType = "dataset"
-) -> HfRepo:
-    """Create an HfRepo instance with internal naming convention.
+) -> HfPath:
+    """Create an HfPath instance with internal naming convention.
 
     Parameters
     ----------
@@ -374,29 +438,31 @@ def hf_internal_repo(
 
     Returns
     -------
-    HfRepo
-        An HfRepo instance with internal=True
+    HfPath
+        An HfPath instance with internal=True
 
     Examples
     --------
     >>> # Create an internal dataset repository
     >>> repo = hf_internal_repo("my-data")
-    >>> repo.path()
+    >>> repo.to_string()
     'datasets/my-org/_dev_my-data'
-    >>> repo.url("train.csv")
+    >>> path = repo.join("train.csv")
+    >>> path.to_url()
     'hf://datasets/my-org/_dev_my-data/train.csv'
 
     >>> # Create an internal model repository
     >>> model_repo = hf_internal_repo("my-model", type="model")
-    >>> model_repo.path("config.json")
+    >>> path = model_repo.join("config.json")
+    >>> path.to_string()
     'my-org/_dev_my-model/config.json'
 
     >>> # Use with custom entity
     >>> repo = hf_internal_repo("dataset", entity="custom-org")
-    >>> repo.url()
+    >>> repo.to_url()
     'hf://datasets/custom-org/_dev_dataset'
     """
-    return HfRepo(entity, name, type, internal=True)
+    return HfPath(entity, name, type, internal=True, path_in_repo=None)
 
 
 def hf_repo(
@@ -404,10 +470,10 @@ def hf_repo(
     entity: str = HF_ENTITY,
     type: RepoType = "dataset",
     internal: bool = False,
-) -> HfRepo:
-    """Create an HfRepo instance for working with Hugging Face repositories.
+) -> HfPath:
+    """Create an HfPath instance for working with Hugging Face repositories.
 
-    This factory function simplifies creation of HfRepo objects, which generate
+    This factory function simplifies creation of HfPath objects, which generate
     fsspec-compatible URLs for use with HfFileSystem and pandas, duckdb, zarr, etc.
 
     Parameters
@@ -423,26 +489,29 @@ def hf_repo(
 
     Returns
     -------
-    HfRepo
-        An HfRepo instance configured for the specified repository
+    HfPath
+        An HfPath instance configured for the specified repository
 
     Examples
     --------
     >>> # Create a dataset repository
     >>> repo = hf_repo("my-dataset")
-    >>> repo.url("train.csv")
+    >>> path = repo.join("train.csv")
+    >>> path.to_url()
     'hf://datasets/my-org/my-dataset/train.csv'
 
     >>> # Read data with pandas
     >>> import pandas as pd
-    >>> df = pd.read_csv(repo.url("data.csv"))
+    >>> path = repo.join("data.csv")
+    >>> df = pd.read_csv(path.to_url())
 
     >>> # List files with HfFileSystem
     >>> from huggingface_hub import HfFileSystem
     >>> fs = HfFileSystem()
-    >>> fs.ls(repo.path("data"))
+    >>> path = repo.join("data")
+    >>> fs.ls(path.to_string())
     """
-    return HfRepo(entity, name, type, internal)
+    return HfPath(entity, name, type, internal, path_in_repo=None)
 
 
 def filesystem() -> AbstractFileSystem:
@@ -456,18 +525,18 @@ def filesystem() -> AbstractFileSystem:
     return HfFileSystem()
 
 
-def create_on_hub(repo: HfRepo, *, private: bool | None = None, **kwargs) -> RepoUrl:
+def create_on_hub(repo: HfPath, *, private: bool | None = None, **kwargs) -> RepoUrl:
     """Create a new repository on the Hugging Face Hub.
 
     This function wraps the HuggingFace Hub API's create_repo method to provide
-    a convenient way to create repositories programmatically using HfRepo instances.
+    a convenient way to create repositories programmatically using HfPath instances.
 
     See https://huggingface.co/docs/huggingface_hub/v0.34.4/en/package_reference/hf_api#huggingface_hub.HfApi.create_repo
 
     Parameters
     ----------
-    repo : HfRepo
-        An HfRepo instance specifying the repository to create
+    repo : HfPath
+        An HfPath instance specifying the repository to create
     private : bool, optional
         Whether to make the repository private. If None, the default visibility
         setting for the organization/user will be used.
@@ -539,9 +608,9 @@ def upload(path: UPath, writer: Callable[[Path], None], **kwargs) -> str:
     if path.protocol != "hf":
         raise ValueError(f"Only hf:// protocol is supported, got: {path.protocol}")
 
-    # Parse repo info from path
-    repo = HfRepo.from_url(str(path))
-    path_in_repo = repo.parse_path(str(path))
+    # Parse repo info and path from URL
+    parsed_path = HfPath.from_url(str(path))
+    path_in_repo = parsed_path.path_in_repo
 
     # Write to temporary directory
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -551,8 +620,8 @@ def upload(path: UPath, writer: Callable[[Path], None], **kwargs) -> str:
         # Upload to Hub
         api = HfApi()
         return api.upload_folder(
-            repo_id=repo.repo_id(),
-            repo_type=repo.type,
+            repo_id=parsed_path.repo_id(),
+            repo_type=parsed_path.type,
             folder_path=temp_dir,
             path_in_repo=path_in_repo,
             **kwargs,
@@ -598,7 +667,7 @@ def hf_repo_lock(path: UPath, lock, timeout_sec: int = 60):
     """
 
     logger.info(f"Saving data to {path}")
-    repo = HfRepo.from_url(str(path))
+    repo = HfPath.from_url(str(path))
     token = f"{repo.type}/{repo.entity}/{repo.name}"
 
     logger.info(f"Acquiring lock for {token=}")
