@@ -20,6 +20,7 @@ from src.pipelines.plantcad2.evaluation.common import (
     generate_model_logits,
 )
 from src.utils.pipeline_utils import save_step_json, load_step_json
+from src.utils.ray_utils import get_available_gpus
 from src.io.hf import get_hf_lock
 from src.io.api import (
     read_pandas_parquet,
@@ -85,12 +86,32 @@ def generate_logits(config: GenerateLogitsConfig) -> None:
         # Get the HF lock before creating remote tasks
         lock = get_hf_lock()
 
+        # Determine number of workers: use config value or default to available GPUs
+        num_workers = config.num_workers
+        if num_workers is None:
+            available_gpus = get_available_gpus()
+            if available_gpus is None:
+                raise ValueError(
+                    "GPU resource not found in Ray cluster and num_workers not specified"
+                )
+            if available_gpus == 0:
+                raise ValueError(
+                    "No GPUs available in the Ray cluster and num_workers not specified"
+                )
+            num_workers = available_gpus
+            logger.info(f"Using {num_workers} workers (available GPUs in cluster)")
+        else:
+            logger.info(f"Using {num_workers} workers (set manually from config)")
+
+        if num_workers <= 0:
+            raise ValueError(f"Invalid number of workers: {num_workers}")
+
         # Wrap for distributed processing
         remote_generate_logits = ray.remote(num_gpus=1)(generate_model_logits)
 
         # Submit tasks for all workers
         futures = []
-        for worker_id in range(config.num_workers):
+        for worker_id in range(num_workers):
             future = remote_generate_logits.remote(
                 dataset_path=dataset_path,
                 output_dir=logits_output_dir,
@@ -100,7 +121,7 @@ def generate_logits(config: GenerateLogitsConfig) -> None:
                 batch_size=config.batch_size,
                 simulation_mode=config.simulation_mode,
                 worker_id=worker_id,
-                num_workers=config.num_workers,
+                num_workers=num_workers,
                 lock=lock,
             )
             futures.append(future)

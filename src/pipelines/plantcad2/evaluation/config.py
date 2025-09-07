@@ -48,8 +48,9 @@ class GenerateLogitsConfig(BaseStepConfig):
         default=True,
         description="Whether to use fake random logits for testing (simulation_mode=True) or real model inference",
     )
-    num_workers: int = Field(
-        default=1, description="The number of workers to use for Ray"
+    num_workers: int | None = Field(
+        default=None,
+        description="The number of workers to use for Ray (defaults to available GPUs)",
     )
 
 

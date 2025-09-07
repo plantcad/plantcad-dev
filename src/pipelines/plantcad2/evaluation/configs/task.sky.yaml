@@ -30,7 +30,6 @@ run: |
     python -m src.pipelines.plantcad2.evaluation.pipeline \
       --config_path src/pipelines/plantcad2/evaluation/configs/config.yaml \
       --tasks.evolutionary_constraint.generate_logits.simulation_mode false \
-      --tasks.evolutionary_constraint.generate_logits.num_workers 2 \
       --executor.prefix hf://datasets/plantcad/_dev_pc2_eval \
       --executor.force_run_failed true \
       ${ARGS}
