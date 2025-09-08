@@ -31,6 +31,30 @@ from src.io.api import (
 logger = logging.getLogger("ray")
 
 
+def _get_num_workers(config_num_workers: int | None) -> int:
+    """Determine number of workers: use config value or default to available GPUs."""
+    num_workers = config_num_workers
+    if num_workers is None:
+        available_gpus = get_available_gpus()
+        if available_gpus is None:
+            raise ValueError(
+                "GPU resource not found in Ray cluster and num_workers not specified in config"
+            )
+        if available_gpus == 0:
+            raise ValueError(
+                "No GPUs available in the Ray cluster and num_workers not specified in config"
+            )
+        num_workers = available_gpus
+        logger.info(f"Using {num_workers} workers (available GPUs in cluster)")
+    else:
+        logger.info(f"Using {num_workers} workers (set manually from config)")
+
+    if num_workers <= 0:
+        raise ValueError(f"Invalid number of workers: {num_workers}")
+
+    return num_workers
+
+
 def downsample_dataset(config: DownsampleDatasetConfig) -> None:
     """Load and downsample the HuggingFace dataset."""
     logger.info(f"Starting dataset downsampling task; {config=}")
@@ -86,25 +110,8 @@ def generate_logits(config: GenerateLogitsConfig) -> None:
         # Get the HF lock before creating remote tasks
         lock = get_hf_lock()
 
-        # Determine number of workers: use config value or default to available GPUs
-        num_workers = config.num_workers
-        if num_workers is None:
-            available_gpus = get_available_gpus()
-            if available_gpus is None:
-                raise ValueError(
-                    "GPU resource not found in Ray cluster and num_workers not specified"
-                )
-            if available_gpus == 0:
-                raise ValueError(
-                    "No GPUs available in the Ray cluster and num_workers not specified"
-                )
-            num_workers = available_gpus
-            logger.info(f"Using {num_workers} workers (available GPUs in cluster)")
-        else:
-            logger.info(f"Using {num_workers} workers (set manually from config)")
-
-        if num_workers <= 0:
-            raise ValueError(f"Invalid number of workers: {num_workers}")
+        # Determine number of workers
+        num_workers = _get_num_workers(config.num_workers)
 
         # Wrap for distributed processing
         remote_generate_logits = ray.remote(num_gpus=1)(generate_model_logits)

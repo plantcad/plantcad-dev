@@ -3,7 +3,7 @@ import asyncio
 import ray
 
 
-@ray.remote(max_restarts=-1)
+@ray.remote(max_restarts=-1, lifetime="detached")
 class AsyncLock:
     def __init__(self):
         # one asyncio.Lock per key

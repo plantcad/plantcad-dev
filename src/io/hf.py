@@ -23,7 +23,7 @@ from src.utils.ray_utils import AsyncLock
 from upath import UPath
 import ray
 
-from src import HF_ENTITY
+from src.constants import RAY_NAMESPACE, HF_ENTITY
 
 
 # ------------------------------------------------------------------------------
@@ -830,12 +830,12 @@ def get_hf_lock() -> ray.actor.ActorHandle:
     try:
         # Check if the actor already exists;
         # see: https://docs.ray.io/en/latest/ray-core/api/doc/ray.get_actor.html
-        lock = ray.get_actor("hf-write-lock")
+        lock = ray.get_actor("hf-write-lock", namespace=RAY_NAMESPACE)
         logger.info("HF write lock actor already running")
         return lock
     except ValueError:
         # Actor doesn't exist, create it
-        lock = AsyncLock.options(name="hf-write-lock").remote()
+        lock = AsyncLock.options(name="hf-write-lock", namespace=RAY_NAMESPACE).remote()
         logger.info("Started HF write lock actor")
         return lock
 

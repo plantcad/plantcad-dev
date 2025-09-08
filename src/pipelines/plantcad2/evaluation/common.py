@@ -274,11 +274,13 @@ def load_and_downsample_dataset(
     )
     df = data[dataset_split].to_pandas()
 
-    logger.info(f"Original dataset size: {len(df)}")
+    original_size = len(df)
 
     if sample_size is not None and sample_size < len(df):
         df = df.sample(n=sample_size, random_state=42).reset_index(drop=True)
-        logger.info(f"Downsampled to: {len(df)} samples")
+        logger.info(f"Dataset size: {original_size} → {len(df)} (downsampled)")
+    else:
+        logger.info(f"Dataset size: {original_size} (no downsampling)")
 
     dataset_path = dataset_dir / f"downsampled_{dataset_split}.parquet"
     write_pandas_parquet(df, dataset_path)

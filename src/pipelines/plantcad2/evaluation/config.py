@@ -23,6 +23,7 @@ class DownsampleDatasetConfig(BaseStepConfig):
     sample_size: int | None = Field(
         default=None,
         description="Number of samples to downsample to (None for full dataset)",
+        ge=0,
     )
     dataset_path: str = Field(
         default="kuleshov-group/cross-species-single-nucleotide-annotation",

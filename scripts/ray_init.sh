@@ -3,10 +3,23 @@
 set -ex
 source .venv/bin/activate
 
-# Start Ray; see: https://docs.skypilot.co/en/v0.9.3/examples/training/ray.html
-head_ip=$(echo "$SKYPILOT_NODE_IPS" | head -n1)
+# Validate environment variables
+if [ -z "$RAY_SETUP_HEAD_NODE_IP" ]; then
+  echo "ERROR: RAY_SETUP_HEAD_NODE_IP is not set" >&2
+  exit 1
+fi
 
-# Use non-default ports to run alongside SkyPilot's Ray cluster; see:
+if [ -z "$RAY_SETUP_NODE_RANK" ]; then
+  echo "ERROR: RAY_SETUP_NODE_RANK is not set" >&2
+  exit 1
+fi
+
+if [ -z "$RAY_SETUP_CLUSTER_NAME" ]; then
+  echo "ERROR: RAY_SETUP_CLUSTER_NAME is not set" >&2
+  exit 1
+fi
+
+# Use non-default ports/dirs to avoid conflicts with other Ray clusters; see:
 # https://docs.ray.io/en/latest/ray-core/configure.html
 GCS_PORT=6479               # default: 6379
 CLIENT_PORT=20001           # default: 10001
@@ -14,10 +27,9 @@ DASHBOARD_PORT=8365         # default: 8265
 DASHBOARD_AGENT_PORT=52465  # default: 52365
 MIN_WORKER_PORT=20002       # default: 10002
 MAX_WORKER_PORT=29999       # default: 19999
-TEMP_DIR=/tmp/ray_plantcad
-PLASMA_DIRECTORY="$HOME/ray_plantcad/plasma"
-OBJECT_SPILLING_DIRECTORY="$HOME/ray_plantcad/spill"
-
+TEMP_DIR=/tmp/ray_${RAY_SETUP_CLUSTER_NAME}
+PLASMA_DIRECTORY="$HOME/ray_${RAY_SETUP_CLUSTER_NAME}/plasma"
+OBJECT_SPILLING_DIRECTORY="$HOME/ray_${RAY_SETUP_CLUSTER_NAME}/spill"
 
 # Check if Ray is already running on the expected port
 if ps aux | grep ray | grep -E "(--gcs_server_port=$GCS_PORT|--gcs-address=.*:$GCS_PORT)" &> /dev/null; then
@@ -28,10 +40,13 @@ else
   mkdir -p $PLASMA_DIRECTORY
   mkdir -p $OBJECT_SPILLING_DIRECTORY
 
-  if [ "$SKYPILOT_NODE_RANK" == "0" ]; then
+  if [ "$RAY_SETUP_NODE_RANK" == "0" ]; then
     echo "Starting Ray head node on port $GCS_PORT"
-    # Note: --include-dashboard is essential for Thalas/Marin (it's used programatically)
-    ray start --head \
+    # Notes:
+    # - `--include-dashboard` is essential for Thalas/Marin (it's used programatically)
+    # - The SkyPilot shell session run on cluster launch will send HUP/SIGTERM to child processes
+    #   when complete if not isolated in background via nohup (Ray does not apparently daemonize itself)
+    nohup ray start --head \
       --disable-usage-stats \
       --include-dashboard true \
       --temp-dir $TEMP_DIR \
@@ -42,11 +57,12 @@ else
       --dashboard-port $DASHBOARD_PORT \
       --dashboard-agent-listen-port $DASHBOARD_AGENT_PORT \
       --min-worker-port $MIN_WORKER_PORT \
-      --max-worker-port $MAX_WORKER_PORT
+      --max-worker-port $MAX_WORKER_PORT \
+      > $TEMP_DIR/ray_head_start.log 2>&1 &
   else
     echo "Starting Ray worker node on port $GCS_PORT"
-    ray start \
-      --address $head_ip:$GCS_PORT \
+    nohup ray start \
+      --address $RAY_SETUP_HEAD_NODE_IP:$GCS_PORT \
       --disable-usage-stats \
       --plasma-directory $PLASMA_DIRECTORY \
       --object-spilling-directory $OBJECT_SPILLING_DIRECTORY \
@@ -54,16 +70,11 @@ else
       --dashboard-port $DASHBOARD_PORT \
       --dashboard-agent-listen-port $DASHBOARD_AGENT_PORT \
       --min-worker-port $MIN_WORKER_PORT \
-      --max-worker-port $MAX_WORKER_PORT
+      --max-worker-port $MAX_WORKER_PORT \
+      > $TEMP_DIR/ray_worker_start.log 2>&1 &
   fi
 fi
 
-# Run command on head node only
-if [ "$SKYPILOT_NODE_RANK" == "0" ]; then
-  export RAY_ADDRESS=$head_ip:$GCS_PORT
-  # Execute all arguments passed to this script (if any)
-  if [ $# -gt 0 ]; then
-    echo "Executing command: $*"
-    exec "$@"
-  fi
-fi
+echo "Ray cluster [$RAY_SETUP_CLUSTER_NAME]initialized."
+echo "Ray address: $RAY_SETUP_HEAD_NODE_IP:$GCS_PORT"
+echo "View dashboard via: ssh -L $DASHBOARD_PORT:localhost:$DASHBOARD_PORT $RAY_SETUP_CLUSTER_NAME -N # (visit http://localhost:$DASHBOARD_PORT)"

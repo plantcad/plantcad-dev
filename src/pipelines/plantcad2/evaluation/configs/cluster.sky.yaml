@@ -1,16 +1,39 @@
 # See: https://docs.skypilot.co/en/v0.9.3/reference/yaml-spec.html
 num_nodes: 2
 resources:
-  cloud: lambda
-  # See:
-  # - https://docs.skypilot.co/en/v0.9.3/compute/gpus.html
+  # For available Lambda regions, see: https://docs.lambda.ai/api/cloud#listInstanceTypes
+  infra: lambda
+  # For details on accelerator specification, see:
+  # - https://docs.skypilot.co/en/v0.9.3/compute/gpus.html (e.g. A100-80GB, A100, A10)
   # - https://docs.skypilot.co/en/latest/examples/auto-failover.html#multiple-candidate-gpus
   accelerators: {A10:1, A100:1}
-  # accelerators: {A100:4}
   disk_size: 100
+
+envs:
+  HUGGING_FACE_HUB_TOKEN: null
 
 workdir: .
 
 setup: |
   set -ex
   uv sync --extra gpu --extra mamba
+
+  # Log SkyPilot environment variables;
+  # note that some of these are different from what's available to tasks
+  echo "SKYPILOT_NUM_NODES: $SKYPILOT_NUM_NODES"
+  echo "SKYPILOT_CLUSTER_INFO: $SKYPILOT_CLUSTER_INFO"
+  echo "SKYPILOT_SETUP_NODE_IPS: $SKYPILOT_SETUP_NODE_IPS"
+  echo "SKYPILOT_SETUP_NODE_RANK: $SKYPILOT_SETUP_NODE_RANK"
+
+  # Initialize Ray cluster in sanitized environment
+  RAY_SETUP_HEAD_NODE_IP=$(echo "$SKYPILOT_SETUP_NODE_IPS" | head -n1)
+  RAY_SETUP_CLUSTER_NAME=$(echo "$SKYPILOT_CLUSTER_INFO" | sed -n 's/.*"cluster_name": "\([^"]*\)".*/\1/p')
+  env -i \
+    HOME="$HOME" \
+    RAY_DEDUP_LOGS=0 \
+    RAY_SETUP_HEAD_NODE_IP="$RAY_SETUP_HEAD_NODE_IP" \
+    RAY_SETUP_NODE_RANK="$SKYPILOT_SETUP_NODE_RANK" \
+    RAY_SETUP_NUM_NODES="$SKYPILOT_NUM_NODES" \
+    RAY_SETUP_CLUSTER_NAME="$RAY_SETUP_CLUSTER_NAME" \
+    HUGGING_FACE_HUB_TOKEN="$HUGGING_FACE_HUB_TOKEN" \
+    bash --login scripts/ray_init.sh
