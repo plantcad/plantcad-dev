@@ -27,9 +27,9 @@ DASHBOARD_PORT=8365         # default: 8265
 DASHBOARD_AGENT_PORT=52465  # default: 52365
 MIN_WORKER_PORT=20002       # default: 10002
 MAX_WORKER_PORT=29999       # default: 19999
-TEMP_DIR=/tmp/ray_${RAY_SETUP_CLUSTER_NAME}
-PLASMA_DIRECTORY="$HOME/ray_${RAY_SETUP_CLUSTER_NAME}/plasma"
-OBJECT_SPILLING_DIRECTORY="$HOME/ray_${RAY_SETUP_CLUSTER_NAME}/spill"
+TEMP_DIR=/tmp/ray-${RAY_SETUP_CLUSTER_NAME}
+PLASMA_DIRECTORY="$HOME/ray-${RAY_SETUP_CLUSTER_NAME}/plasma"
+OBJECT_SPILLING_DIRECTORY="$HOME/ray-${RAY_SETUP_CLUSTER_NAME}/spill"
 
 # Check if Ray is already running on the expected port
 if ps aux | grep ray | grep -E "(--gcs_server_port=$GCS_PORT|--gcs-address=.*:$GCS_PORT)" &> /dev/null; then

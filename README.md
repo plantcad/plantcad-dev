@@ -148,13 +148,13 @@ This example shows how to create a Lambda cluster and run a pipeline on it.
 Create a new cluster with the SkyPilot [launch](https://docs.skypilot.co/en/latest/reference/cli.html#sky-launch) command.
 
 ```bash
+# Clear any existing, local SkyPilot state and stop the API server
+sky api stop; [ -d ~/.sky ] && rm -rf ~/.sky
+
 # Create Lambda API key at https://cloud.lambda.ai/api-keys/cloud-api
 # and add to ~/.lambda_cloud/credentials.json:
 # echo "api_key = <key>" >> ~/.lambda_cloud/lambda_keys
 sky check -v # Ensure that Lambda is detected as an available cloud
-
-# Clear any existing, local SkyPilot state
-[ -d ~/.sky ] && rm -rf ~/.sky
 
 # Set the number of nodes to launch and manage
 NUM_NODES=2
@@ -174,14 +174,6 @@ sky launch -c pc-dev $CONFIG_PATH/cluster.sky.yaml --num-nodes $NUM_NODES --env 
 # ├── To submit a job:		sky exec pc-dev yaml_file
 # ├── To stop the cluster:	sky stop pc-dev
 # └── To teardown the cluster:	sky down pc-dev
-
-# Set the Ray address of the cluster for any future, local commands
-# - The Ray address is stored in a file in the cluster's temp/working directory
-#   and can be retrieved with `cat /tmp/ray_pc-dev/ray_current_cluster`
-# - A SkyPilot command for this, `sky status --ip pc-dev`, would be better
-#   for this except that it returns the public IP rather than the private IP
-#   stored by Ray
-export RAY_GCS_ADDRESS=$(ssh pc-dev cat /tmp/ray_pc-dev/ray_current_cluster)
 
 # View the ray dashboard for the new cluster on your local machine
 # to ensure that all nodes came online as expected
@@ -207,11 +199,14 @@ Submit jobs to the cluster with the SkyPilot [exec](https://docs.skypilot.co/en/
 # - Code from the working directory is synced to the cluster
 #   for every `exec` and `launch` command; see:
 #   https://docs.skypilot.co/en/latest/examples/syncing-code-artifacts.html#sync-code-from-a-local-directory-or-a-git-repository
+# - It is currently necessary to specify NUM_NODES to force the inclusion of
+#   the head node for the task, which is essential for Thalas since it introspects
+#   on the cluster through the `localhost`, i.e. it assumes execution on the head node
 sky exec pc-dev $CONFIG_PATH/task.sky.yaml \
-  --num-nodes $NUM_NODES --env HUGGING_FACE_HUB_TOKEN --env RAY_GCS_ADDRESS
+  --num-nodes $NUM_NODES --env HUGGING_FACE_HUB_TOKEN
 
 # Add arbitrary arguments to the task execution
-ARGS="--executor.force_run_failed=true" \
+ARGS="--tasks.evolutionary_constraint.downsample_dataset.sample_size=1000" \
 sky exec pc-dev $CONFIG_PATH/task.sky.yaml \
   --num-nodes $NUM_NODES --env HUGGING_FACE_HUB_TOKEN --env ARGS
 ```
@@ -242,6 +237,27 @@ fab exec --cmd="nvidia-smi"
 # | NVIDIA-SMI 570.148.08             Driver Version: 570.148.08     CUDA Version: 12.8     |
 # |-----------------------------------------+------------------------+----------------------+
 # ...
+```
+
+#### Cluster info
+
+Fabric can also be used to fetch important cluster info that isn't available via SkyPilot (or I can't find it in the docs/API).  Examples:
+
+```bash
+# Find the Ray address for the cluster
+# - The Ray address is stored in a file in the cluster's temp/working directory
+#   and can be retrieved with `cat /tmp/ray-pc-dev/ray_current_cluster` (that's what the fabric command does)
+# - The SkyPilot command for this, `sky status --ip pc-dev`, could be better
+#   if it returned the private IP rather than the public IP
+# - The name RAY_GCS_ADDRESS is used so as not to clobber the RAY_ADDRESS
+#   environment variable set for SkyPilot's internal ray cluster
+export RAY_GCS_ADDRESS=$(fab ray-address)
+echo $RAY_GCS_ADDRESS
+# 10.19.109.245:6479
+
+# Find all nodes in the cluster
+fab cluster-nodes
+# TODO: show output
 ```
 
 #### Reinitialization
@@ -291,7 +307,7 @@ find ~/.cache/uv/ | grep causal | grep whl
 # /home/ubuntu/.cache/uv/sdists-v9/git/287e017c5a750cba/95d8aba8a8c75aed/causal_conv1d-1.5.0.post8-cp312-cp312-linux_x86_64.whl
 ```
 
-2. Copy the wheels to a release in a repo like https://github.com/eric-czech/python-wheels/releases/tag/v0.0.1
+2. Copy the wheels to a release in a repo like https://github.com/Open-Athena/python-wheels/releases/tag/v0.0.1
 3. Update `pyproject.toml` to use the new wheels if applicable, with fallback to source build
 
 ## Storage
@@ -383,23 +399,16 @@ hf repo-files delete --repo-type dataset plantcad/_dev_pc2_eval '*'
 hf repo-files delete --repo-type dataset plantcad/_dev_pc2_eval evolutionary_downsample_dataset-be132f
 ```
 
-## Lambda Cloud
 
-### API Examples
+## SkyPilot
 
-```bash
-LAMBDA_API_KEY=$(grep "api_key" ~/.lambda_cloud/lambda_keys | cut -d'=' -f2 | xargs)
-curl --request GET --url 'https://cloud.lambda.ai/api/v1/instance-types' \
-     --header 'accept: application/json' \
-     --user "$LAMBDA_API_KEY:"
+### Environment variables
 
-curl -X POST https://cloud.lambdalabs.com/api/v1/instance-operations/launch \
-  -H "Authorization: Bearer $LAMBDA_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-        "region_name": "us-west-1",
-        "instance_type_name": "gpu_1x_a10",
-        "ssh_key_names": ["my-key"],
-        "quantity": 2
-      }'
-```
+SkyPilot sets different environment variables about cluster nodes for the `setup` and `run` sections of YAML configs used, typically, by the `launch` and `exec` CLI commands (respectively).  See:
+
+- [environment-variables.html#environment-variables-for-setup](https://docs.skypilot.co/en/v0.5.0/running-jobs/environment-variables.html#environment-variables-for-setup
+- [environment-variables.html#environment-variables-for-run](https://docs.skypilot.co/en/v0.5.0/running-jobs/environment-variables.html#environment-variables-for-run)
+
+In this context, it is worth noting that the `SKYPILOT_NODE_IPS` list available to `run` does not contain all cluster hosts.  It contains only those allocated for the task according to `num_nodes`.  This means that the Ray head node cannot be determined from this variable if all nodes are not used by the task.  If a subset of nodes is used, then `SKYPILOT_NODE_RANK` may be 0 on a worker node (depending on what nodes were chosen).  This contradicts the behavior documented at https://docs.skypilot.co/en/v0.5.0/reference/yaml-spec.html, which clearly implies that the head node should always be included: "Number of nodes (optional; defaults to 1) to launch including the head node".
+
+By contrast, `SKYPILOT_SETUP_NODE_IPS` contains all cluster hosts, so the Ray head node can always be determined from this variable.

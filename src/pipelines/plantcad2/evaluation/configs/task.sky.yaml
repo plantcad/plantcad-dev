@@ -1,23 +1,18 @@
 name: plantcad2-evaluation
 
-# This is very important -- if you don't specifcy 2 nodes here,
-# then skypilot may launch the task on any node in the cluster and will
-# populate env vars like this in a 2 node cluster:
-# (worker1, rank=0, pid=6675, ip=10.19.89.229) SKYPILOT_NUM_NODES: 1
-# (worker1, rank=0, pid=6675, ip=10.19.89.229) SKYPILOT_NUM_GPUS_PER_NODE: 0
-# (worker1, rank=0, pid=6675, ip=10.19.89.229) SKYPILOT_NODE_IPS: 10.19.89.229
-# (worker1, rank=0, pid=6675, ip=10.19.89.229) SKYPILOT_NODE_RANK: 0
-# This is a problem because the node ip list only includes on worker node instead of all IPs
-# and this script infers the Ray head node from the full ip list (and the worker is assigned rank 0)
-# TODO: pass in RAY_ADDRESS from env
-# - https://docs.skypilot.co/en/v0.6.1/running-jobs/distributed-jobs.html#executing-a-task-on-the-head-node-only
-# - https://docs.skypilot.co/en/v0.5.0/reference/yaml-spec.html
-#   Says clearly "Number of nodes (optional; defaults to 1) to launch **including the head node**."
-#   This is not true -- with no num_nodes or num_nodes 1 tasks regularly launch on workers
-# num_nodes: 1
+# IMPORTANT: Do not set `num_nodes` for task configuration.
+# All nodes must be used to execute each task and the size of the cluster will vary,
+# so each task invocation must include --num-nodes N.  All nodes must be included b/c:
+# - The Ray cluster used by Thalas needs to have the Sky workdir synced to every node
+# - `SKYPILOT_NODE_IPS` will not necessarily include the head node when using a node subset
+# - Thalas introspects on the Ray cluster through the `localhost`, i.e. it assumes execution on the head node
+# num_nodes: N
+
 envs:
+  # SkyPilot will enforce the existence of any env vars with `null` values here
   HUGGING_FACE_HUB_TOKEN: null
-  RAY_GCS_ADDRESS: null
+  RAY_GCS_PORT: 6479
+  RAY_DEDUP_LOGS: 1
   ARGS: ""
 
 workdir: .
@@ -31,19 +26,30 @@ run: |
   echo "SKYPILOT_NODE_IPS: $SKYPILOT_NODE_IPS"
   echo "SKYPILOT_NODE_RANK: $SKYPILOT_NODE_RANK"
 
-  # Log the Ray address
-  echo "RAY_GCS_ADDRESS: $RAY_GCS_ADDRESS"
+  # Log Ray environment variables
+  echo "RAY_GCS_PORT: $RAY_GCS_PORT"
+  echo "RAY_DEDUP_LOGS: $RAY_DEDUP_LOGS"
 
   # Run on rank 0 only as defense against accidental multi-node task execution;
   # the first node chosen for a task by SkyPilot always has rank 0 (which may be a worker)
   if [ "$SKYPILOT_NODE_RANK" == "0" ]; then
 
-    # Execute the pipeline in sanitized environment;
-    # note that it is not necessary to validate existence of RAY_GCS_ADDRESS as
-    # SkyPilot does this automatically for task env vars with a `null` value
+    # Infer head node IP
+    RAY_HEAD_NODE_IP=$(echo "$SKYPILOT_NODE_IPS" | head -n1)
+    if [ -z "$RAY_HEAD_NODE_IP" ]; then
+      echo "ERROR: RAY_HEAD_NODE_IP is not set" >&2
+      exit 1
+    fi
+
+    # Avoid RAY_ADDRESS in parent env to avoid clobbering SkyPilot's RAY_ADDRESS
+    RAY_GCS_ADDRESS="$RAY_HEAD_NODE_IP:$RAY_GCS_PORT"
+
+    echo "RAY_GCS_ADDRESS: $RAY_GCS_ADDRESS"
+
+    # Execute the pipeline in sanitized environment
     env -i \
       HOME="$HOME" \
-      RAY_DEDUP_LOGS=0 \
+      RAY_DEDUP_LOGS="$RAY_DEDUP_LOGS" \
       RAY_ADDRESS="$RAY_GCS_ADDRESS" \
       HUGGING_FACE_HUB_TOKEN="$HUGGING_FACE_HUB_TOKEN" \
       bash -c "source .venv/bin/activate && python -m src.pipelines.plantcad2.evaluation.pipeline \
