@@ -10,9 +10,14 @@ name: plantcad2-evaluation
 # This is a problem because the node ip list only includes on worker node instead of all IPs
 # and this script infers the Ray head node from the full ip list (and the worker is assigned rank 0)
 # TODO: pass in RAY_ADDRESS from env
-num_nodes: 2
+# - https://docs.skypilot.co/en/v0.6.1/running-jobs/distributed-jobs.html#executing-a-task-on-the-head-node-only
+# - https://docs.skypilot.co/en/v0.5.0/reference/yaml-spec.html
+#   Says clearly "Number of nodes (optional; defaults to 1) to launch **including the head node**."
+#   This is not true -- with no num_nodes or num_nodes 1 tasks regularly launch on workers
+# num_nodes: 1
 envs:
   HUGGING_FACE_HUB_TOKEN: null
+  RAY_GCS_ADDRESS: null
   ARGS: ""
 
 workdir: .
@@ -26,17 +31,20 @@ run: |
   echo "SKYPILOT_NODE_IPS: $SKYPILOT_NODE_IPS"
   echo "SKYPILOT_NODE_RANK: $SKYPILOT_NODE_RANK"
 
-  # Run on rank 0 only as defense against accidental multi-node task execution
-  if [ "$SKYPILOT_NODE_RANK" == "0" ]; then
-    # Set Ray address for sanitized environment
-    RAY_HEAD_NODE_IP=$(echo "$SKYPILOT_NODE_IPS" | head -n1)
-    RAY_ADDRESS="$RAY_HEAD_NODE_IP:6479"
+  # Log the Ray address
+  echo "RAY_GCS_ADDRESS: $RAY_GCS_ADDRESS"
 
-    # Execute the pipeline in sanitized environment
+  # Run on rank 0 only as defense against accidental multi-node task execution;
+  # the first node chosen for a task by SkyPilot always has rank 0 (which may be a worker)
+  if [ "$SKYPILOT_NODE_RANK" == "0" ]; then
+
+    # Execute the pipeline in sanitized environment;
+    # note that it is not necessary to validate existence of RAY_GCS_ADDRESS as
+    # SkyPilot does this automatically for task env vars with a `null` value
     env -i \
       HOME="$HOME" \
       RAY_DEDUP_LOGS=0 \
-      RAY_ADDRESS="$RAY_ADDRESS" \
+      RAY_ADDRESS="$RAY_GCS_ADDRESS" \
       HUGGING_FACE_HUB_TOKEN="$HUGGING_FACE_HUB_TOKEN" \
       bash -c "source .venv/bin/activate && python -m src.pipelines.plantcad2.evaluation.pipeline \
         --config_path src/pipelines/plantcad2/evaluation/configs/config.yaml \

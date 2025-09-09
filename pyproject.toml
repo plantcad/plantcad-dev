@@ -49,16 +49,17 @@ torch = [
 ]
 mamba-ssm = [
   # Attempt install of pre-built wheels
-  { url = "https://github.com/eric-czech/python-wheels/releases/download/v0.0.1/mamba_ssm-2.2.4-cp312-cp312-linux_x86_64.whl", marker = "sys_platform == 'linux' and platform_machine == 'x86_64' and python_version == '3.12'" },
+  { url = "https://github.com/Open-Athena/python-wheels/releases/download/v0.0.1/mamba_ssm-2.2.4-cp312-cp312-linux_x86_64.whl", marker = "sys_platform == 'linux' and platform_machine == 'x86_64' and python_version == '3.12'" },
   # Fall back on forced installation from source
   { git = "https://github.com/state-spaces/mamba", tag = "v2.2.4", marker = "sys_platform != 'linux' or platform_machine != 'x86_64' or python_version != '3.12'" },
 ]
 causal-conv1d = [
   # Attempt install of pre-built wheels
-  { url = "https://github.com/eric-czech/python-wheels/releases/download/v0.0.1/causal_conv1d-1.5.0.post8-cp312-cp312-linux_x86_64.whl", marker = "sys_platform == 'linux' and platform_machine == 'x86_64' and python_version == '3.12'" },
+  { url = "https://github.com/Open-Athena/python-wheels/releases/download/v0.0.1/causal_conv1d-1.5.0.post8-cp312-cp312-linux_x86_64.whl", marker = "sys_platform == 'linux' and platform_machine == 'x86_64' and python_version == '3.12'" },
   # Fall back on forced installation from source
   { git = "https://github.com/Dao-AILab/causal-conv1d", tag = "v1.5.0.post8", marker = "sys_platform != 'linux' or platform_machine != 'x86_64' or python_version != '3.12'" },
 ]
+skypilot = { git = "https://github.com/Open-Athena/skypilot", branch = "fix-lambda-launch" }
 thalas = { git = "https://github.com/Open-Athena/thalas", branch = "executor-extraction" }
 
 [[tool.uv.index]]

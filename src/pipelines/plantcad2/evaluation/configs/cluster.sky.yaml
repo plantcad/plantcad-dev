@@ -1,12 +1,12 @@
 # See: https://docs.skypilot.co/en/v0.9.3/reference/yaml-spec.html
-num_nodes: 2
 resources:
   # For available Lambda regions, see: https://docs.lambda.ai/api/cloud#listInstanceTypes
   infra: lambda
   # For details on accelerator specification, see:
   # - https://docs.skypilot.co/en/v0.9.3/compute/gpus.html (e.g. A100-80GB, A100, A10)
   # - https://docs.skypilot.co/en/latest/examples/auto-failover.html#multiple-candidate-gpus
-  accelerators: {A10:1, A100:1}
+  # accelerators: {A10:1, A100:1}
+  accelerators: {A10:1}
   disk_size: 100
 
 envs:

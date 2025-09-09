@@ -148,22 +148,25 @@ This example shows how to create a Lambda cluster and run a pipeline on it.
 Create a new cluster with the SkyPilot [launch](https://docs.skypilot.co/en/latest/reference/cli.html#sky-launch) command.
 
 ```bash
-# Clear any existing, local SkyPilot state
-[ -d ~/.sky ] && rm -rf ~/.sky
-
 # Create Lambda API key at https://cloud.lambda.ai/api-keys/cloud-api
 # and add to ~/.lambda_cloud/credentials.json:
 # echo "api_key = <key>" >> ~/.lambda_cloud/lambda_keys
 sky check -v # Ensure that Lambda is detected as an available cloud
 
+# Clear any existing, local SkyPilot state
+[ -d ~/.sky ] && rm -rf ~/.sky
+
+# Set the number of nodes to launch and manage
+NUM_NODES=2
+
 # Launch a dev cluster; see:
 # - https://docs.skypilot.co/en/latest/reference/cli.html
 # - https://docs.skypilot.co/en/latest/reference/yaml-spec.html
-sky launch -c pc-dev --num-nodes 2 --gpus "A10:1" --disk-size 100 --workdir .
+sky launch -c pc-dev --num-nodes $NUM_NODES --gpus "A10:1" --disk-size 100 --workdir .
 
 # Alternatively, use the cluster YAML config:
 CONFIG_PATH=src/pipelines/plantcad2/evaluation/configs
-sky launch -c pc-dev $CONFIG_PATH/cluster.sky.yaml --env HUGGING_FACE_HUB_TOKEN
+sky launch -c pc-dev $CONFIG_PATH/cluster.sky.yaml --num-nodes $NUM_NODES --env HUGGING_FACE_HUB_TOKEN
 # On successful completion, you will see the following:
 # 📋 Useful Commands
 # Cluster name: pc-dev
@@ -171,6 +174,14 @@ sky launch -c pc-dev $CONFIG_PATH/cluster.sky.yaml --env HUGGING_FACE_HUB_TOKEN
 # ├── To submit a job:		sky exec pc-dev yaml_file
 # ├── To stop the cluster:	sky stop pc-dev
 # └── To teardown the cluster:	sky down pc-dev
+
+# Set the Ray address of the cluster for any future, local commands
+# - The Ray address is stored in a file in the cluster's temp/working directory
+#   and can be retrieved with `cat /tmp/ray_pc-dev/ray_current_cluster`
+# - A SkyPilot command for this, `sky status --ip pc-dev`, would be better
+#   for this except that it returns the public IP rather than the private IP
+#   stored by Ray
+export RAY_GCS_ADDRESS=$(ssh pc-dev cat /tmp/ray_pc-dev/ray_current_cluster)
 
 # View the ray dashboard for the new cluster on your local machine
 # to ensure that all nodes came online as expected
@@ -193,15 +204,16 @@ Submit jobs to the cluster with the SkyPilot [exec](https://docs.skypilot.co/en/
 
 ```bash
 # Submit a job to the cluster
-# NOTE: code from the working directory is synced to the cluster
-# for every `exec` and `launch` command; see:
-# https://docs.skypilot.co/en/latest/examples/syncing-code-artifacts.html#sync-code-from-a-local-directory-or-a-git-repository
-sky exec pc-dev $CONFIG_PATH/task.sky.yaml --env HUGGING_FACE_HUB_TOKEN
+# - Code from the working directory is synced to the cluster
+#   for every `exec` and `launch` command; see:
+#   https://docs.skypilot.co/en/latest/examples/syncing-code-artifacts.html#sync-code-from-a-local-directory-or-a-git-repository
+sky exec pc-dev $CONFIG_PATH/task.sky.yaml \
+  --num-nodes $NUM_NODES --env HUGGING_FACE_HUB_TOKEN --env RAY_GCS_ADDRESS
 
 # Add arbitrary arguments to the task execution
 ARGS="--executor.force_run_failed=true" \
 sky exec pc-dev $CONFIG_PATH/task.sky.yaml \
-  --env HUGGING_FACE_HUB_TOKEN --env ARGS
+  --num-nodes $NUM_NODES --env HUGGING_FACE_HUB_TOKEN --env ARGS
 ```
 
 ### Cluster management
@@ -369,4 +381,25 @@ hf repo-files delete --repo-type dataset plantcad/_dev_pc2_eval '*'
 
 # Clear all data for a specific step
 hf repo-files delete --repo-type dataset plantcad/_dev_pc2_eval evolutionary_downsample_dataset-be132f
+```
+
+## Lambda Cloud
+
+### API Examples
+
+```bash
+LAMBDA_API_KEY=$(grep "api_key" ~/.lambda_cloud/lambda_keys | cut -d'=' -f2 | xargs)
+curl --request GET --url 'https://cloud.lambda.ai/api/v1/instance-types' \
+     --header 'accept: application/json' \
+     --user "$LAMBDA_API_KEY:"
+
+curl -X POST https://cloud.lambdalabs.com/api/v1/instance-operations/launch \
+  -H "Authorization: Bearer $LAMBDA_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "region_name": "us-west-1",
+        "instance_type_name": "gpu_1x_a10",
+        "ssh_key_names": ["my-key"],
+        "quantity": 2
+      }'
 ```

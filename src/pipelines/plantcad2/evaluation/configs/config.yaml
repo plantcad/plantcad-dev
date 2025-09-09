@@ -4,7 +4,7 @@ tasks:
       dataset_path: kuleshov-group/cross-species-single-nucleotide-annotation
       dataset_split: valid
       dataset_subdir: Evolutionary_constraint
-      sample_size: null
+      sample_size: 1000
     generate_logits:
       model_path: kuleshov-group/PlantCaduceus_l32 # kuleshov-group/PlantCAD2-Small-l24-d0768
       device: cuda

@@ -45,7 +45,8 @@ else
     # Notes:
     # - `--include-dashboard` is essential for Thalas/Marin (it's used programatically)
     # - The SkyPilot shell session run on cluster launch will send HUP/SIGTERM to child processes
-    #   when complete if not isolated in background via nohup (Ray does not apparently daemonize itself)
+    #   when complete if not isolated in background via nohup, which implies that Ray does not
+    #   daemonize itself (or takes a while to do so)
     nohup ray start --head \
       --disable-usage-stats \
       --include-dashboard true \
