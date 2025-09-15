@@ -45,7 +45,7 @@ from pydantic import Field
 from dataclasses import replace
 from pydantic.dataclasses import dataclass
 from thalas.execution import ExecutorStep, ExecutorMainConfig, output_path_of, this_output_path
-from src.utils.logging import filter_known_warnings, initialize_logging
+from src.utils.logging_utils import filter_known_warnings, initialize_logging
 from src.exec import executor_main
 
 logger = logging.getLogger("ray")
@@ -223,7 +223,7 @@ ssh pc-dev
 ssh pc-dev-worker1 # pc-dev-worker2, etc.
 ```
 
-For convience, the [fabfile.py](fabfile.py) script provides a way to run arbitrary shell commands on all hosts in the cluster based on the generated SkyPilot ssh config (`~/.sky/generated/ssh/<cluster_name>`).  E.g.:
+For convenience, the [fabfile.py](fabfile.py) script provides a way to run arbitrary shell commands on all hosts in the cluster based on the generated SkyPilot ssh config (`~/.sky/generated/ssh/<cluster_name>`).  E.g.:
 
 ```bash
 fab exec --cmd="nvidia-smi"
@@ -321,7 +321,7 @@ The simplest way to read remote data is through existing fsspec-compatible libra
 Here are a few examples:
 
 ```python
-# Use fsspec compatibily libraries
+# Use fsspec-compatible libraries
 import pandas as pd
 df = pd.read_parquet("hf://datasets/openai/gsm8k/main/train-00000-of-00001.parquet")
 
@@ -404,7 +404,7 @@ hf repo-files delete --repo-type dataset plantcad/_dev_pc2_eval evolutionary_dow
 
 ### Environment variables
 
-SkyPilot sets different environment variables about cluster nodes for the `setup` and `run` sections of YAML configs used, typically, by the `launch` and `exec` CLI commands (respectively).  See:
+SkyPilot sets different environment variables about cluster nodes for the `setup` and `run` sections of YAML configs used typically by the `launch` and `exec` CLI commands (respectively).  See:
 
 - [environment-variables.html#environment-variables-for-setup](https://docs.skypilot.co/en/v0.5.0/running-jobs/environment-variables.html#environment-variables-for-setup)
 - [environment-variables.html#environment-variables-for-run](https://docs.skypilot.co/en/v0.5.0/running-jobs/environment-variables.html#environment-variables-for-run)
