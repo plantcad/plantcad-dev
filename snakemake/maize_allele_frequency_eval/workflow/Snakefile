@@ -1,0 +1,24 @@
+configfile: "config/config.yaml"
+
+include: "rules/common.smk"
+include: "rules/ensembl.smk"
+
+
+
+rule all:
+    input:
+        "results/variants.annot.parquet",
+
+
+rule process_variants:
+    input:
+        "results/input/Maize_Hapmap3_Exclude_TE_PlantCAD_Zero_Shot_Scores.tsv",
+    output:
+        "results/variants.parquet",
+    run:
+        (
+            pl.read_csv(input[0], separator="\t", schema_overrides={"CHR": str})
+            .rename({"CHR": "chrom", "POS": "pos", "REF": "ref", "ALT": "alt"})
+            .sort(COORDINATES)
+            .write_parquet(output[0])
+        )
