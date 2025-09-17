@@ -25,6 +25,8 @@ setup: |
   echo "SKYPILOT_SETUP_NODE_RANK: $SKYPILOT_SETUP_NODE_RANK"
 
   # Infer Ray cluster settings from SkyPilot cluster info
+  # Note that `SKYPILOT_SETUP_NODE_IPS` is ordered by node rank; see:
+  # https://docs.skypilot.co/en/latest/running-jobs/environment-variables.html#environment-variables-for-setup
   RAY_SETUP_HEAD_NODE_IP=$(echo "$SKYPILOT_SETUP_NODE_IPS" | head -n1)
   RAY_SETUP_CLUSTER_NAME=$(echo "$SKYPILOT_CLUSTER_INFO" | sed -n 's/.*"cluster_name": "\([^"]*\)".*/\1/p')
 

@@ -35,6 +35,8 @@ run: |
   if [ "$SKYPILOT_NODE_RANK" == "0" ]; then
 
     # Infer head node IP
+    # Note that `SKYPILOT_NODE_IPS` is ordered by node rank; see:
+    # https://docs.skypilot.co/en/latest/running-jobs/environment-variables.html#environment-variables-for-run
     RAY_HEAD_NODE_IP=$(echo "$SKYPILOT_NODE_IPS" | head -n1)
     if [ -z "$RAY_HEAD_NODE_IP" ]; then
       echo "ERROR: RAY_HEAD_NODE_IP is not set" >&2
