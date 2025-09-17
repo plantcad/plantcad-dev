@@ -2,17 +2,10 @@
 
 from pydantic import Field, model_validator
 from pydantic.dataclasses import dataclass
-from typing import Any
 from typing_extensions import Self
 from thalas.execution import ExecutorMainConfig
 
-
-@dataclass
-class BaseStepConfig:
-    """Base configuration for pipeline steps."""
-
-    input_path: Any = Field(default=None, description="Input path for pipeline data")
-    output_path: Any = Field(default=None, description="Output path for pipeline data")
+from src.utils.pipeline_utils import BaseStepConfig
 
 
 @dataclass
@@ -30,6 +23,7 @@ class DownsampleDatasetConfig(BaseStepConfig):
     sample_size: int | None = Field(
         default=None,
         description="Number of samples to downsample to (None for full dataset)",
+        ge=0,
     )
     dataset_path: str = Field(
         default="kuleshov-group/cross-species-single-nucleotide-annotation",
@@ -46,7 +40,7 @@ class GenerateLogitsConfig(BaseStepConfig):
         description="The path of the pre-trained model to use",
     )
 
-    device: str = Field(default="cuda:0", description="The device to run the model")
+    device: str = Field(default="cuda", description="The device to run the model")
     batch_size: int = Field(
         default=128, description="The batch size for the model", gt=0
     )
@@ -55,8 +49,9 @@ class GenerateLogitsConfig(BaseStepConfig):
         default=True,
         description="Whether to use fake random logits for testing (simulation_mode=True) or real model inference",
     )
-    num_workers: int = Field(
-        default=1, description="The number of workers to use for Ray"
+    num_workers: int | None = Field(
+        default=None,
+        description="The number of workers to use for Ray (defaults to available GPUs)",
     )
 
 
@@ -64,9 +59,7 @@ class GenerateLogitsConfig(BaseStepConfig):
 class GenerateScoresConfig(BaseStepConfig):
     """Configuration for scores generation step."""
 
-    dataset_path: Any = Field(
-        default=None, description="Output path from dataset downsampling step"
-    )
+    ...
 
 
 @dataclass

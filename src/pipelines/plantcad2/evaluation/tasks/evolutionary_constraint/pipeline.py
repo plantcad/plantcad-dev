@@ -1,10 +1,7 @@
 """Evolutionary constraint evaluation pipeline using thalas execution pattern."""
 
 import logging
-import pickle
 from dataclasses import replace
-import numpy as np
-import pandas as pd
 import ray
 from upath import UPath
 from thalas.execution import ExecutorStep, output_path_of, this_output_path
@@ -22,15 +19,45 @@ from src.pipelines.plantcad2.evaluation.common import (
     load_and_downsample_dataset,
     generate_model_logits,
 )
-from src.io import open_file
+from src.utils.pipeline_utils import save_step_json, load_step_json
+from src.utils.ray_utils import get_available_gpus
+from src.io.hf import get_hf_lock
+from src.io.api import (
+    read_pandas_parquet,
+    write_pandas_parquet,
+    read_xarray_mfdataset,
+)
 
 logger = logging.getLogger("ray")
 
 
+def _get_num_workers(config_num_workers: int | None) -> int:
+    """Determine number of workers: use config value or default to available GPUs."""
+    num_workers = config_num_workers
+    if num_workers is None:
+        available_gpus = get_available_gpus()
+        if available_gpus is None:
+            raise ValueError(
+                "GPU resource not found in Ray cluster and num_workers not specified in config"
+            )
+        if available_gpus == 0:
+            raise ValueError(
+                "No GPUs available in the Ray cluster and num_workers not specified in config"
+            )
+        num_workers = available_gpus
+        logger.info(f"Using {num_workers} workers (available GPUs in cluster)")
+    else:
+        logger.info(f"Using {num_workers} workers (set manually from config)")
+
+    if num_workers <= 0:
+        raise ValueError(f"Invalid number of workers: {num_workers}")
+
+    return num_workers
+
+
 def downsample_dataset(config: DownsampleDatasetConfig) -> None:
     """Load and downsample the HuggingFace dataset."""
-    logger.info("Starting Evolutionary Constraint evaluation pipeline")
-    logger.info(f"Loaded task configuration:\n{config}")
+    logger.info(f"Starting dataset downsampling task; {config=}")
 
     # Setup dataset directory using executor-managed output path
     output_path = UPath(config.output_path)
@@ -44,26 +71,24 @@ def downsample_dataset(config: DownsampleDatasetConfig) -> None:
         sample_size=config.sample_size,
     )
 
-    # Save pipeline data
-    pipeline_data = {
-        "config": config,
+    # Save step data
+    step_data = {
         "num_samples": num_samples,
         "dataset_filename": dataset_path.name,
-        "dataset_relpath": dataset_path.relative_to(output_path),
+        "dataset_relpath": dataset_path.relative_to(output_path).path,
     }
-    with open_file(output_path / "pipeline_data", "wb") as f:
-        pickle.dump(pipeline_data, f)
+    save_step_json(output_path, step_data)
 
 
 def generate_logits(config: GenerateLogitsConfig) -> None:
     """Generate logits using either fake random data or real model inference."""
+    logger.info(f"Starting logits generation task; {config=}")
 
-    # Load pipeline data from previous step
-    with open_file(UPath(config.input_path) / "pipeline_data", "rb") as f:
-        pipeline_data = pickle.load(f)
+    # Load step data from previous step
+    input_step = load_step_json(UPath(config.input_path))
 
     # Construct dataset path from the previous step's output
-    dataset_path = UPath(config.input_path) / pipeline_data["dataset_relpath"]
+    dataset_path = UPath(config.input_path) / input_step["dataset_relpath"]
 
     output_path = UPath(config.output_path)
 
@@ -82,12 +107,18 @@ def generate_logits(config: GenerateLogitsConfig) -> None:
             simulation_mode=config.simulation_mode,
         )
     else:
+        # Get the HF lock before creating remote tasks
+        lock = get_hf_lock()
+
+        # Determine number of workers
+        num_workers = _get_num_workers(config.num_workers)
+
         # Wrap for distributed processing
         remote_generate_logits = ray.remote(num_gpus=1)(generate_model_logits)
 
         # Submit tasks for all workers
         futures = []
-        for worker_id in range(config.num_workers):
+        for worker_id in range(num_workers):
             future = remote_generate_logits.remote(
                 dataset_path=dataset_path,
                 output_dir=logits_output_dir,
@@ -97,107 +128,93 @@ def generate_logits(config: GenerateLogitsConfig) -> None:
                 batch_size=config.batch_size,
                 simulation_mode=config.simulation_mode,
                 worker_id=worker_id,
-                num_workers=config.num_workers,
+                num_workers=num_workers,
+                lock=lock,
             )
             futures.append(future)
 
         # Wait for all tasks to complete and get file paths
         results = ray.get(futures)
 
-        # Combine all worker output files into single logits.tsv
-        combined_logits = []
+        # Verify that worker files were created
+        if not results:
+            raise ValueError("No worker outputs found")
 
-        # Load and combine logits from all worker files
-        for worker_file in results:
-            if worker_file.exists():
-                worker_logits = pd.read_csv(worker_file, sep="\t", header=None).values
-                combined_logits.append(worker_logits)
+        logger.info(
+            f"Generated {len(results)} worker logits files in {logits_output_dir}"
+        )
 
-        if combined_logits:
-            final_logits = np.vstack(combined_logits)
-            logits_path = logits_output_dir / "logits.tsv"
-            pd.DataFrame(final_logits).to_csv(
-                logits_path, sep="\t", header=False, index=False
-            )
-            logger.info(
-                f"Combined {len(combined_logits)} worker outputs into {logits_path}"
-            )
-        else:
-            raise ValueError("No worker outputs found to combine")
+        # Use the directory path for the next step (files will be combined when read)
+        logits_path = logits_output_dir
 
-    pipeline_data.update(
-        {
-            "logits_relpath": logits_path.relative_to(output_path),
-            "token_idx": config.token_idx,
-        }
-    )
+    # Save logits output location and token index for next step
+    output_step = {
+        "logits_relpath": logits_path.relative_to(output_path).path,
+        "token_idx": config.token_idx,
+    }
 
-    # Save updated pipeline data
-    with open_file(output_path / "pipeline_data", "wb") as f:
-        pickle.dump(pipeline_data, f)
+    # Save step data
+    save_step_json(output_path, output_step)
 
 
 def generate_scores(config: GenerateScoresConfig) -> None:
     """Generate scores for plantcad evaluation."""
-    # Load pipeline data from previous step
-    with open_file(UPath(config.input_path) / "pipeline_data", "rb") as f:
-        pipeline_data = pickle.load(f)
+    logger.info(f"Starting scores generation task; {config=}")
+
+    # Load step data from previous step
+    input_step = load_step_json(UPath(config.input_path))
 
     output_path = UPath(config.output_path)
 
     # Construct logits path from the previous step's output
-    logits_path = UPath(config.input_path) / pipeline_data["logits_relpath"]
-    logits_matrix = pd.read_csv(logits_path, sep="\t", header=None).values
+    logits_path = UPath(config.input_path) / input_step["logits_relpath"]
+    logits = read_xarray_mfdataset(logits_path, concat_dim="samples")
 
-    token_idx = pipeline_data["token_idx"]
+    token_idx = input_step["token_idx"]
 
-    # Get downsampled dataset path from two steps upstream in pipeline
-    dataset_path = UPath(config.dataset_path)
-
-    _, y_true, y_scores = compute_plantcad_scores(
-        dataset_path=dataset_path,
-        logits_matrix=logits_matrix,
-        output_dir=output_path / "scores",
+    predictions = compute_plantcad_scores(
+        logits=logits,
         token_idx=token_idx,
     )
 
-    # Update pipeline data
-    pipeline_data.update(
-        {
-            "y_true": y_true,
-            "y_scores": y_scores,
-        }
-    )
+    # Save prediction data as parquet
+    write_pandas_parquet(predictions, output_path / "predictions.parquet")
 
-    # Save updated pipeline data
-    with open_file(output_path / "pipeline_data", "wb") as f:
-        pickle.dump(pipeline_data, f)
+    # Save predictions file location for ROC computation
+    output_step = {
+        "predictions_relpath": "predictions.parquet",
+    }
+
+    # Save step data
+    save_step_json(output_path, output_step)
 
 
 def compute_roc(config: ComputeRocConfig) -> None:
     """Compute and print ROC AUC score."""
-    # Load pipeline data from previous step
-    with open_file(UPath(config.input_path) / "pipeline_data", "rb") as f:
-        pipeline_data = pickle.load(f)
+    logger.info(f"Starting ROC computation task; {config=}")
 
-    results = compute_roc_auc(pipeline_data["y_true"], pipeline_data["y_scores"])
+    # Load step data from previous step
+    input_step = load_step_json(UPath(config.input_path))
 
-    # Update pipeline data
-    pipeline_data.update(
-        {
-            "results": results,
-        }
+    # Load prediction data from parquet
+    predictions = read_pandas_parquet(
+        UPath(config.input_path) / input_step["predictions_relpath"]
     )
+    y_true = predictions["label"].values
+    y_score = predictions["plantcad_score"].values
 
-    # Final logging
-    logger.info("Pipeline completed successfully!")
-    logger.info(f"Final ROC AUC: {results.roc_auc:.4f}")
-    logger.info(f"Processed {results.num_samples} samples")
-    logger.info(f"Results saved to: {config.output_path}")
+    results = compute_roc_auc(y_true, y_score)
 
-    # Save final pipeline data
-    with open_file(UPath(config.output_path) / "pipeline_data", "wb") as f:
-        pickle.dump(pipeline_data, f)
+    # Save only relevant results for this step (all fields expected by main pipeline)
+    output_step = {
+        "roc_auc": results.roc_auc,
+        "num_samples": results.num_samples,
+        "num_positive": results.num_positive,
+        "num_negative": results.num_negative,
+    }
+
+    # Save final step data
+    save_step_json(UPath(config.output_path), output_step)
 
 
 class EvolutionaryConstraintPipeline:
@@ -246,7 +263,6 @@ class EvolutionaryConstraintPipeline:
             config=replace(
                 self.steps_config.generate_scores,
                 input_path=output_path_of(self.generate_logits()),
-                dataset_path=output_path_of(self.downsample_dataset()),
                 output_path=this_output_path(),
             ),
             description="Generate plantcad scores",

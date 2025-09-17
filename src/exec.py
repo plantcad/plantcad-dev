@@ -6,9 +6,12 @@ import ray
 from thalas.execution import Executor, ExecutorMainConfig, ExecutorStep
 from thalas.utilities.ray_utils import is_local_ray_cluster
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ray")
 
 
+# TODO: Move to Thalas once the initial Marin extraction is complete;
+# This was copied from https://github.com/marin-community/marin/blob/fe373c233ee7288cbf8e7600765c3fc6fb6fa3ac/src/marin/execution/executor.py#L1094
+# and modified only to remove the draccus.wrap decorator and compulsory logging config
 def executor_main(
     config: ExecutorMainConfig,
     steps: list[ExecutorStep],
