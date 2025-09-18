@@ -11,7 +11,7 @@ alwaysApply: true
 - Include docstrings and comments judiciously; they should be used only to add clarity for operations or functions for which intent or implementation details are not immediately clear
 
 ## Project
-- Manage all dependecies via `uv` and `pyproject.toml`
+- Manage all dependencies via `uv` and `pyproject.toml`
 - Use `uv run pre-commit` for linting
 
 ## Execution

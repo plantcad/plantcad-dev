@@ -45,7 +45,7 @@ torch = [
 ]
 causal-conv1d = { git = "https://github.com/Dao-AILab/causal-conv1d", tag = "v1.5.0.post8" }
 mamba-ssm = { git = "https://github.com/state-spaces/mamba", tag = "v2.2.4" }
-thalas = { git = "https://github.com/Open-Athena/thalas", branch = "executor-extraction" }
+thalas = { git = "https://github.com/Open-Athena/thalas", branch = "c2c4de7" }
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
