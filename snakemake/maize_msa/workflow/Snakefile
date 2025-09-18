@@ -1,0 +1,25 @@
+configfile: "config/config.yaml"
+
+include: "rules/common.smk"
+include: "rules/msa.smk"
+include: "rules/conservation.smk"
+
+
+rule all:
+    input:
+        "results/upload.done",
+
+
+rule hf_upload:
+    input:
+        "results/dataset/README.md",
+        "results/dataset/msa.tar.gz",
+        "results/dataset/species.txt",
+        "results/dataset/tree.nh",
+        "results/dataset/species_metadata.tsv",
+        "results/dataset/phastCons.bw",
+        "results/dataset/phyloP.bw",
+    output:
+        touch("results/upload.done"),
+    shell:
+        "hf upload-large-folder {config[output_hf_path]} --repo-type dataset results/dataset"
