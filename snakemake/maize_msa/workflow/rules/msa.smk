@@ -139,7 +139,7 @@ rule species_metadata:
     run:
         df = pd.read_csv(
             "hf://datasets/plantcad/andropogoneae_alignment_raw_data/keyFile.tsv",
-            sep='\t', 
+            sep='\t',
             index_col=0
         )
         species_order = pd.read_csv(input[0], header=None).values.ravel()

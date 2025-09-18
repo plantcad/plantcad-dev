@@ -16,7 +16,7 @@ chroms:
 # since we train on 128-bp windows, 512bp sounds reasonable
 # for now having larger chunks reduces the number of files which is
 # less burden on the filesystem
-# in zarr v3 you'll have shards which would allow to have fast reads 
+# in zarr v3 you'll have shards which would allow to have fast reads
 # with a small number of files
 # but last time we tried it was slow
 chunk_size: 1024
