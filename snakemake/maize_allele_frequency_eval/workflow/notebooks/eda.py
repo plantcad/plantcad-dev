@@ -14,9 +14,26 @@ def _():
 
 @app.cell
 def _(pl):
-    V = pl.read_parquet("../../results/variants.annot.parquet")
+    models = [
+        "PlantCAD",
+        "phastCons",
+        "phyloP",
+    ]
+
+    def load_V():
+        V = pl.read_parquet("../../results/variants.annot.parquet").drop("PlantCAD")
+        for model in models:
+            score = pl.read_parquet(f"../../results/predictions/{model}.parquet")["score"]
+            V = V.with_columns(score.alias(model))
+        return V
+
+    V = load_V()
+    print(len(V))
+    V = V.drop_nulls(subset=models)
+    print(len(V))
+    V = V.sample(fraction=1, shuffle=True, seed=42)
     V
-    return (V,)
+    return V, models
 
 
 @app.cell
@@ -45,9 +62,7 @@ def _(V):
 
 
 @app.cell
-def _(V, consequences, pl, quantiles, tqdm):
-    model = "PlantCAD"
-
+def _(V, consequences, models, pl, quantiles, tqdm):
     # TODO: to handle ties fairly should first shuffle V
     # and then sort by "model" and get variant q * len(V)
     # (important for phyloP and phastCons)
@@ -56,15 +71,22 @@ def _(V, consequences, pl, quantiles, tqdm):
     res = []
     for consequence in tqdm(consequences):
         V2 = V if consequence == "all" else V.filter(consequence=consequence)
-        for q in quantiles:
-            V3 = V2.filter(pl.col(model) < pl.quantile(model, q))
-            res.append([consequence, q, len(V3), V3["MAF"].mean()])
+        for model in models:
+            for q in quantiles:
+                V3 = V2.sort(model, descending=True, maintain_order=True).head(int(q * len(V2)))
+                res.append([consequence, model, q, len(V3), V3["MAF"].mean()])
     res = (
-        pl.DataFrame(res, ["consequence", "q", "n", "Mean MAF"], orient="row")
+        pl.DataFrame(res, ["consequence", "model", "q", "n", "Mean MAF"], orient="row")
         .with_columns(pl.col("consequence").str.replace("_variant", ""))
     )
     res
     return (res,)
+
+
+@app.cell
+def _(res):
+    res
+    return
 
 
 @app.cell
@@ -75,6 +97,7 @@ def _(pl, res, sns):
         data=res.filter(pl.col("n") >= min_n),
         x="q",
         y="Mean MAF",
+        hue="model",
         col="consequence",
         kind="line",
         col_wrap=4,
@@ -85,6 +108,78 @@ def _(pl, res, sns):
     g.set_titles(col_template="{col_name}")
     g.set(xscale="log")
     g
+    return
+
+
+@app.cell
+def _(V, sns):
+    sns.histplot(data=V, x="phastCons", bins=100)
+    return
+
+
+@app.cell
+def _(V, sns):
+    sns.histplot(data=V, x="phyloP", bins=100)
+    return
+
+
+@app.cell
+def _(V, pl, sns):
+    sns.histplot(data=V.filter(pl.col("phyloP").abs() > 10), x="phyloP", bins=100)
+    return
+
+
+@app.cell
+def _():
+    # there seems to be a numerical issue
+    return
+
+
+@app.cell
+def _(V, models):
+    V[models].describe()
+    return
+
+
+@app.cell
+def _(V):
+    (V["phyloP"] == V["phyloP"].max()).sum()
+    return
+
+
+@app.cell
+def _(V):
+    (V["phyloP"] == V["phyloP"].min()).sum()
+    return
+
+
+@app.cell
+def _(V, pl):
+    V.filter(pl.col("phyloP").abs() > 10)
+    return
+
+
+@app.cell
+def _(V, pl):
+    V.filter(pl.col("phyloP").abs() == pl.col("phyloP").max())
+    return
+
+
+@app.cell
+def _(V, pl):
+    V.filter(pl.col("phyloP").abs() == pl.col("phyloP").max(), pl.col("chrom") == "10")
+    return
+
+
+@app.cell
+def _(V, pl):
+    V.filter(pl.col("chrom")=="10", pl.col("pos").is_in([76949170, 96943283])).sort("phyloP", descending=True)
+    return
+
+
+@app.cell
+def _(V):
+    V.sort(["chrom", "pos"]).head()
     return
 
 
