@@ -1,5 +1,7 @@
 raw_data_path: https://huggingface.co/datasets/plantcad/maize-allele-frequency-raw-data/resolve/main/Maize_Hapmap3_Exclude_TE_PlantCAD_Zero_Shot_Scores.parquet
 
+output_hf_path: plantcad/maize-allele-frequency
+
 ensembl_vep:
   species: zea_mays
   cache_url: https://ftp.ebi.ac.uk/ensemblgenomes/pub/plants/release-62/variation/indexed_vep_cache/zea_mays_vep_62_Zm-B73-REFERENCE-NAM-5.0.tar.gz

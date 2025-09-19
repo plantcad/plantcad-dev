@@ -1,5 +1,7 @@
 # Maize allele frequency eval dataset creation
 
+Processes the data from PCad1 paper, adds Ensembl VEP consequences, and uploads to HF.
+
 ## Setup
 
 ```bash

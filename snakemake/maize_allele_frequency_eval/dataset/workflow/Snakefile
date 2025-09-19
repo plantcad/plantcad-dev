@@ -6,7 +6,7 @@ include: "rules/ensembl.smk"
 
 rule all:
     input:
-        "results/variants.annot.parquet",
+        "results/upload.done",
 
 
 rule process_variants:
@@ -38,3 +38,31 @@ rule process_variants:
             .sort(COORDINATES)
             .write_parquet(output[0])
         )
+
+
+rule cp_dataset:
+    input:
+        "results/variants.annot.parquet",
+    output:
+        "results/dataset/test.parquet",
+    shell:
+        "cp {input} {output}"
+
+
+rule cp_readme:
+    input:
+        "config/hf_readme.md",
+    output:
+        "results/dataset/README.md",
+    shell:
+        "cp {input} {output}"
+
+
+rule hf_upload:
+    input:
+        "results/dataset/README.md",
+        "results/dataset/test.parquet",
+    output:
+        touch("results/upload.done"),
+    shell:
+        "hf upload-large-folder {config[output_hf_path]} --repo-type dataset results/dataset"
