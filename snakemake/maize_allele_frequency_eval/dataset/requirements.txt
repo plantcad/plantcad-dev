@@ -1,0 +1,5 @@
+huggingface_hub
+pandas
+polars
+pyarrow
+snakemake
