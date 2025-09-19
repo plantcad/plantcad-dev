@@ -71,5 +71,4 @@ rule process_ensembl_vep:
         V2["alt"] = V2.variant.str.split("_").str[2].str.split("/").str[1]
         V2.drop(columns=["variant"], inplace=True)
         V = V.merge(V2, on=COORDINATES, how="left")
-        print(V)
         V.to_parquet(output[0], index=False)
