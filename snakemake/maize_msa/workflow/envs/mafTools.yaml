@@ -1,0 +1,9 @@
+name: mafTools
+channels:
+  - conda-forge
+  - bioconda
+  - genomedk
+channel_priority: strict
+dependencies:
+  - python=2.7
+  - maftools
