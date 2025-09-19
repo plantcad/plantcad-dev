@@ -1,8 +1,5 @@
 huggingface_hub
-matplotlib
-numpy
 pandas
 polars
 pyarrow
-seaborn
 snakemake

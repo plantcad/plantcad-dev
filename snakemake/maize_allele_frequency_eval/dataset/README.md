@@ -1,4 +1,4 @@
-# Maize allele frequency eval
+# Maize allele frequency eval dataset creation
 
 ## Setup
 
