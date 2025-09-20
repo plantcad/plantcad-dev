@@ -1,0 +1,16 @@
+configfile: "config/config.yaml"
+
+include: "rules/common.smk"
+include: "rules/models.smk"
+
+
+rule all:
+    input:
+        expand("results/predictions/{model}.parquet", model=config["models"]),
+
+
+rule download_dataset:
+    output:
+        "results/variants.parquet",
+    shell:
+        "wget -O {output} {config[dataset_path]}"

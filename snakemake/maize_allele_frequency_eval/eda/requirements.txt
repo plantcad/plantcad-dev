@@ -1,0 +1,9 @@
+marimo
+matplotlib
+numpy
+pandas
+polars
+pyarrow
+seaborn
+snakemake
+tqdm
