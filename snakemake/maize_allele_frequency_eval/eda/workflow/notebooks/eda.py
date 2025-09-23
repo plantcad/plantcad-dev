@@ -6,17 +6,19 @@ app = marimo.App(width="medium")
 
 @app.cell
 def _():
+    import numpy as np
     import polars as pl
     import seaborn as sns
     from tqdm import tqdm
 
-    return pl, sns, tqdm
+    return np, pl, sns, tqdm
 
 
 @app.cell
 def _(pl):
     models = [
         "PlantCAD",
+        "MSA_empirical_LLR",
     ]
 
     def load_V():
@@ -68,11 +70,18 @@ def _(V, sns):
 
 
 @app.cell
-def _(V):
+def _(V, sns):
+    sns.histplot(data=V, x="MSA_empirical_LLR", bins=100)
+    return
+
+
+@app.cell
+def _(V, np):
     consequences = ["all"] + V["consequence"].value_counts().sort(
         "count", descending=True
     )["consequence"].to_list()
-    quantiles = [1e-4, 1e-3, 1e-2, 1e-1, 1e0]
+    # quantiles = [1e-4, 1e-3, 1e-2, 1e-1, 1e0]
+    quantiles = np.logspace(-4, 0, 10)
     return consequences, quantiles
 
 
@@ -105,14 +114,19 @@ def _(pl, res, sns):
         hue="model",
         col="consequence",
         kind="line",
+        marker="o",
         col_wrap=4,
         height=3,
         facet_kws=dict(sharey=False),
-        markers=True,
     )
     g.set_titles(col_template="{col_name}")
     g.set(xscale="log")
     g
+    return
+
+
+@app.cell
+def _():
     return
 
 

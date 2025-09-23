@@ -1,3 +1,4 @@
+import multiprocessing as mp
 import numpy as np
 import pandas as pd
 import polars as pl
@@ -20,3 +21,7 @@ def run_vep_MSA_empirical_LLR(MSA, chrom, pos, ref, alt, pseudocounts=1):
     ref_prob = ref_count / (ref_count + alt_count)
     alt_prob = alt_count / (ref_count + alt_count)
     return np.log(alt_prob) - np.log(ref_prob)
+
+
+def _run_vep_MSA_empirical_LLR_batch(i, chrom, pos, ref, alt, msa):
+    return run_vep_MSA_empirical_LLR(msa, chrom[i], pos[i], ref[i], alt[i])
