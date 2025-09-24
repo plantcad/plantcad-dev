@@ -19,6 +19,9 @@ def _(pl):
     models = [
         "PlantCAD",
         "MSA_empirical_LLR",
+        "phyloP_v2",
+        "phyloP",
+        "phastCons",
     ]
 
     def load_V():
@@ -76,6 +79,24 @@ def _(V, sns):
 
 
 @app.cell
+def _(V, sns):
+    sns.histplot(data=V, x="phyloP_v2", bins=100)
+    return
+
+
+@app.cell
+def _(V, sns):
+    sns.histplot(data=V, x="phyloP", bins=100)
+    return
+
+
+@app.cell
+def _(V, sns):
+    sns.histplot(data=V, x="phastCons", bins=100)
+    return
+
+
+@app.cell
 def _(V, np):
     consequences = ["all"] + V["consequence"].value_counts().sort(
         "count", descending=True
@@ -91,11 +112,10 @@ def _(V, consequences, models, pl, quantiles, tqdm):
     for consequence in tqdm(consequences):
         V2 = V if consequence == "all" else V.filter(consequence=consequence)
         for model in models:
+            V3 = V2.sort(model, descending=True, maintain_order=True)
             for q in quantiles:
-                V3 = V2.sort(model, descending=True, maintain_order=True).head(
-                    int(q * len(V2))
-                )
-                res.append([consequence, model, q, len(V3), V3["AF"].mean()])
+                V4 = V3.head(int(q * len(V3)))
+                res.append([consequence, model, q, len(V4), V4["AF"].mean()])
     res = pl.DataFrame(
         res, ["consequence", "model", "q", "n", "Mean AF"], orient="row"
     ).with_columns(pl.col("consequence").str.replace("_variant", ""))
@@ -116,7 +136,7 @@ def _(pl, res, sns):
         kind="line",
         marker="o",
         col_wrap=4,
-        height=3,
+        height=2.3,
         facet_kws=dict(sharey=False),
     )
     g.set_titles(col_template="{col_name}")

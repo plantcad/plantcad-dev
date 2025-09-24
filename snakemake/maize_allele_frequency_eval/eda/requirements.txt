@@ -3,6 +3,7 @@ matplotlib
 numpy
 pandas
 polars
+pyBigWig
 pyarrow
 seaborn
 snakemake

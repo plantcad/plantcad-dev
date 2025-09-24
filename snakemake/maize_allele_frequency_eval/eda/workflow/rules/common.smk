@@ -2,6 +2,7 @@ import multiprocessing as mp
 import numpy as np
 import pandas as pd
 import polars as pl
+import pyBigWig
 from tqdm import tqdm
 import zarr
 

@@ -7,3 +7,9 @@ msa_path: ../../maize_msa_train/results/msa.zarr
 models:
   - PlantCAD
   - MSA_empirical_LLR
+  - phyloP_v2
+  - phyloP
+  - phastCons
+
+conservation_models:
+  phyloP_v2: ../../maize_msa/results/phyloP/merged.bw
