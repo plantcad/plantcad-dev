@@ -19,7 +19,8 @@ rule extract_maf:
     input:
         "results/maf_raw/{chrom}.maf.gz",
     output:
-        temp("results/maf_raw/{chrom}.maf"),
+        #temp("results/maf_raw/{chrom}.maf"),
+        "results/maf_raw/{chrom}.maf",
     shell:
         "gunzip -c {input} > {output}"
 
@@ -28,7 +29,8 @@ rule maf_filter_duplicates:
     input:
         "results/maf_raw/{chrom}.maf",
     output:
-        temp("results/maf/{chrom}.maf"),
+        #temp("results/maf/{chrom}.maf"),
+        "results/maf/{chrom}.maf",
     shell:
         "mafDuplicateFilter --maf {input} -k > {output}"
 
