@@ -19,9 +19,10 @@ def _(pl):
     models = [
         "PlantCAD",
         "MSA_empirical_LLR",
-        "phyloP_v2",
         "phyloP",
+        "phyloP_v2",
         "phastCons",
+        "phastCons_0.05_12_0.3",
     ]
 
     def load_V():
@@ -97,6 +98,12 @@ def _(V, sns):
 
 
 @app.cell
+def _(V, sns):
+    sns.histplot(data=V, x="phastCons_0.05_12_0.3", bins=100)
+    return
+
+
+@app.cell
 def _(V, np):
     consequences = ["all"] + V["consequence"].value_counts().sort(
         "count", descending=True
@@ -142,6 +149,46 @@ def _(pl, res, sns):
     g.set_titles(col_template="{col_name}")
     g.set(xscale="log")
     g
+    return (min_n,)
+
+
+@app.cell
+def _(min_n, pl, res, sns):
+    sns.relplot(
+        data=(
+            res.with_columns(
+                pl.col("model").replace(
+                    {
+                        "phyloP": "phyloP (old)",
+                        "phyloP_v2": "phyloP (new)",
+                        "phastCons": "phastCons (old)",
+                        "phastCons_0.05_12_0.3": "phastCons (new)",
+                    }
+                )
+            ).filter(
+                pl.col("n") >= min_n,
+                pl.col("consequence") == "all",
+                pl.col("model").is_in(
+                    [
+                        "phyloP (old)",
+                        "phyloP (new)",
+                        "phastCons (old)",
+                        "phastCons (new)",
+                    ]
+                ),
+            )
+        ),
+        x="q",
+        y="Mean AF",
+        hue="model",
+        col="consequence",
+        kind="line",
+        marker="o",
+        col_wrap=1,
+        height=3.3,
+        aspect=1,
+        facet_kws=dict(sharey=False),
+    ).set_titles(col_template="{col_name}").set(xscale="log")
     return
 
 

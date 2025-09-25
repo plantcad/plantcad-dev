@@ -10,6 +10,8 @@ models:
   - phyloP_v2
   - phyloP
   - phastCons
+  - phastCons_0.05_12_0.3
 
 conservation_models:
   phyloP_v2: ../../maize_msa/results/phyloP/merged.bw
+  phastCons_0.05_12_0.3: ../../maize_msa/results/conservation/phastCons_0.05_12_0.3/merged.bw
