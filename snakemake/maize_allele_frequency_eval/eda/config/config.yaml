@@ -6,12 +6,10 @@ msa_path: ../../maize_msa_train/results/msa.zarr
 
 models:
   - PlantCAD
-  - MSA_empirical_LLR
-  - phyloP_v2
-  - phyloP
   - phastCons
-  - phastCons_0.05_12_0.3
+  - phyloP
+  - MSA_empirical_LLR
 
 conservation_models:
-  phyloP_v2: ../../maize_msa/results/phyloP/merged.bw
-  phastCons_0.05_12_0.3: ../../maize_msa/results/conservation/phastCons_0.05_12_0.3/merged.bw
+  phyloP: ../../maize_msa/results/conservation/phyloP/merged.bw
+  phastCons: ../../maize_msa/results/conservation/phastCons_0.05_12_0.3/merged.bw

@@ -23,54 +23,6 @@ rule pcad1_precomputed_score:
         V.write_parquet(output[0])
 
 
-rule phyloP_precomputed_score:
-    input:
-        "results/variants.parquet",
-    output:
-        "results/predictions/phyloP.parquet",
-    run:
-        V = pl.read_parquet(input[0], columns=COORDINATES)
-        score = (
-            pl.read_parquet(
-                config["raw_data_path"],
-                columns=["CHR", "POS", "REF", "ALT", "phyloP"]
-            )
-            .rename({
-                "CHR": "chrom", "POS": "pos", "REF": "ref", "ALT": "alt",
-                "phyloP": "score"
-            })
-            .with_columns(
-                pl.col("chrom").cast(str),
-            )
-        )
-        V = V.join(score, on=COORDINATES, how="left")[["score"]]
-        V.write_parquet(output[0])
-
-
-rule phastCons_precomputed_score:
-    input:
-        "results/variants.parquet",
-    output:
-        "results/predictions/phastCons.parquet",
-    run:
-        V = pl.read_parquet(input[0], columns=COORDINATES)
-        score = (
-            pl.read_parquet(
-                config["raw_data_path"],
-                columns=["CHR", "POS", "REF", "ALT", "phastCons"]
-            )
-            .rename({
-                "CHR": "chrom", "POS": "pos", "REF": "ref", "ALT": "alt",
-                "phastCons": "score"
-            })
-            .with_columns(
-                pl.col("chrom").cast(str),
-            )
-        )
-        V = V.join(score, on=COORDINATES, how="left")[["score"]]
-        V.write_parquet(output[0])
-
-
 rule msa_empirical_LLR:
     input:
         "results/variants.parquet",
