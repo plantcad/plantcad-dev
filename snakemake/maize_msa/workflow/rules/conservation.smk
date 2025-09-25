@@ -1,10 +1,10 @@
-rule download_phastCons:
-    output:
-        temp("results/conservation/phastCons/{chrom}.wig"),
-    wildcard_constraints:
-        chrom="|".join(CHROMS),
-    shell:
-        "wget -O {output} https://huggingface.co/datasets/plantcad/andropogoneae_alignment_raw_data/resolve/main/andropogoneae_phastcons/chr{wildcards.chrom}_phastCons.wig"
+#rule download_phastCons:
+#    output:
+#        temp("results/conservation/phastCons/{chrom}.wig"),
+#    wildcard_constraints:
+#        chrom="|".join(CHROMS),
+#    shell:
+#        "wget -O {output} https://huggingface.co/datasets/plantcad/andropogoneae_alignment_raw_data/resolve/main/andropogoneae_phastcons/chr{wildcards.chrom}_phastCons.wig"
 
 
 #rule download_phyloP:
@@ -16,23 +16,23 @@ rule download_phastCons:
 #        "wget -O {output} https://huggingface.co/datasets/plantcad/andropogoneae_alignment_raw_data/resolve/main/andropogoneae_phylop/chr{wildcards.chrom}_phyloP_SPH.wig"
 
 
-rule conservation_merge_chroms:
-    input:
-        expand("results/conservation/{{conservation}}/{chrom}.wig", chrom=CHROMS),
-    output:
-        temp("results/conservation/{conservation}/merged.wig"),
-    shell:
-        "cat {input} | sed 's/chrom=panand_chr/chrom=/g' > {output}"
-
-
-rule wig_to_bigwig:
-    input:
-        "results/conservation/{conservation}/merged.wig",
-        "config/chrom.sizes",
-    output:
-        "results/dataset/{conservation}.bw",
-    shell:
-        "wigToBigWig {input} {output}"
+#rule conservation_merge_chroms:
+#    input:
+#        expand("results/conservation/{{conservation}}/{chrom}.wig", chrom=CHROMS),
+#    output:
+#        temp("results/conservation/{conservation}/merged.wig"),
+#    shell:
+#        "cat {input} | sed 's/chrom=panand_chr/chrom=/g' > {output}"
+#
+#
+#rule wig_to_bigwig:
+#    input:
+#        "results/conservation/{conservation}/merged.wig",
+#        "config/chrom.sizes",
+#    output:
+#        "results/dataset/{conservation}.bw",
+#    shell:
+#        "wigToBigWig {input} {output}"
 
 
 # msa_view requires chromosome 1 to be named zB73v5.1, etc. to match the MAF file
@@ -74,36 +74,17 @@ rule wig_to_bigwig:
 #        phyloFit --tree {input[1]} --msa-format SS --out-root {params} --EM --precision MED {input[0]}
 #        """
 
-
+# takes like 15 min
 rule phyloP:
     input:
         "config/neutral.mod",
         "results/maf/{chrom}.maf",
     output:
-        "results/phyloP/{chrom}.wig",
+        "results/conservation/phyloP/{chrom}.wig",
     wildcard_constraints:
         chrom="|".join(CHROMS),
     shell:
         "phyloP --wig-scores --method LRT --mode CONACC {input} > {output}"
-
-
-rule phyloP_merge_chroms:
-    input:
-        expand("results/phyloP/{chrom}.wig", chrom=CHROMS),
-    output:
-        temp("results/phyloP/merged.wig"),
-    shell:
-        "cat {input} > {output}"
-
-
-rule phyloP_wig_to_bigwig:
-    input:
-        "results/phyloP/merged.wig",
-        "config/chrom.sizes",
-    output:
-        "results/phyloP/merged.bw",
-    shell:
-        "wigToBigWig {input} {output}"
 
 
 #rule phyloP_v2:
@@ -114,3 +95,59 @@ rule phyloP_wig_to_bigwig:
 #        "results/phyloP_v2/{chrom}.wig",
 #    shell:
 #        "phyloP --wig-scores --method LRT --mode CONACC {input} > {output}"
+
+
+# didn't finish in 1 hour
+#rule phyloP_SPH:
+#    input:
+#        "config/neutral.mod",
+#        "results/maf/{chrom}.maf",
+#    output:
+#        "results/conservation/phyloP_SPH/{chrom}.wig",
+#    wildcard_constraints:
+#        chrom="|".join(CHROMS),
+#    log:
+#        "logs/conservation/phyloP_SPH/{chrom}.log",
+#    shell:
+#        "phyloP --wig-scores --method SPH --mode CONACC --log {log} {input} > {output}"
+
+
+# takes like 3 min when fixing target-coverage and expected-length
+rule phastCons:
+    input:
+        "results/maf/{chrom}.maf",
+        "config/neutral.mod",
+    output:
+        "results/conservation/phastCons_{target_coverage}_{expected_length}_{rho}/{chrom}.wig",
+    wildcard_constraints:
+        chrom="|".join(CHROMS),
+    shell:
+        """
+        phastCons \
+        --seqname {wildcards.chrom} \
+        --target-coverage {wildcards.target_coverage} \
+        --expected-length {wildcards.expected_length} \
+        --rho {wildcards.rho} \
+        {input} > {output}
+        """
+
+#        --target-coverage 0.05 \
+#        --expected-length 12 \
+
+rule merge_chroms:
+    input:
+        expand("results/conservation/{{conservation}}/{chrom}.wig", chrom=CHROMS),
+    output:
+        temp("results/conservation/{conservation}/merged.wig"),
+    shell:
+        "cat {input} > {output}"
+
+
+rule wig_to_bigwig:
+    input:
+        "results/conservation/{conservation}/merged.wig",
+        "config/chrom.sizes",
+    output:
+        "results/conservation/{conservation}/merged.bw",
+    shell:
+        "wigToBigWig {input} {output}"
