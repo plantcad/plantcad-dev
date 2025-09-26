@@ -21,4 +21,7 @@ chroms:
 # but last time we tried it was slow
 chunk_size: 1024
 
+phyloP: phyloP
+phastCons: phastCons_0.05_12_0.3
+
 output_hf_path: plantcad/andropogoneae_msa
