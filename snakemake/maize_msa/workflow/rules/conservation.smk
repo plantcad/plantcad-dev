@@ -1,7 +1,7 @@
 # takes like 15 min
 rule phyloP:
     input:
-        "config/neutral.mod",
+        "results/neutral.mod",
         "results/maf/{chrom}.maf",
     output:
         temp("results/conservation/phyloP/{chrom}.wig"),
@@ -15,7 +15,7 @@ rule phyloP:
 rule phastCons:
     input:
         "results/maf/{chrom}.maf",
-        "config/neutral.mod",
+        "results/neutral.mod",
     output:
         temp("results/conservation/phastCons_{target_coverage}_{expected_length}_{rho}/{chrom}.wig"),
     wildcard_constraints:

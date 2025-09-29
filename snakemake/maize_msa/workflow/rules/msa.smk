@@ -28,7 +28,8 @@ rule maf_filter_duplicates:
     input:
         "results/maf_raw/{chrom}.maf",
     output:
-        temp("results/maf/{chrom}.maf"),
+        #temp("results/maf/{chrom}.maf"),
+        "results/maf/{chrom}.maf",
     shell:
         "mafDuplicateFilter --maf {input} -k > {output}"
 

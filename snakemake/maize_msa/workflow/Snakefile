@@ -7,7 +7,13 @@ include: "rules/conservation.smk"
 
 rule all:
     input:
-        "results/upload.done",
+        #expand("results/maf/{chrom}.maf", chrom=CHROMS),
+        #expand("results/msa_view/4d_sites/{chrom}.ss", chrom=CHROMS),
+        #"results/msa_view/4d_sites/merged.ss",
+        #"results/neutral.mod",
+        #"results/upload.done",
+        "results/dataset/phastCons.bw",
+        "results/dataset/phyloP.bw",
 
 
 rule hf_upload:
