@@ -11,5 +11,5 @@ models:
   - MSA_empirical_LLR
 
 conservation_models:
-  phyloP: ../../maize_msa/results/conservation/phyloP/merged.bw
-  phastCons: ../../maize_msa/results/conservation/phastCons_0.05_12_0.3/merged.bw
+  phyloP: ../../maize_msa/results/dataset/phyloP.bw
+  phastCons: ../../maize_msa/results/dataset/phastCons.bw
