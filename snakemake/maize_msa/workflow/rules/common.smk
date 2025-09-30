@@ -53,7 +53,7 @@ rule msa_view:
         "results/annotation/{chrom}.gff",
     output:
         temp("results/msa_view/4d_codons/{chrom}.ss"),
-        "results/msa_view/4d_sites/{chrom}.ss",
+        temp("results/msa_view/4d_sites/{chrom}.ss"),
     wildcard_constraints:
         chrom="|".join(CHROMS),
     shell:
@@ -104,3 +104,14 @@ rule phyloFit_extract_tree:
         """
         grep "^TREE" {input} | cut -d' ' -f2- > {output}
         """
+
+
+rule reorder_tree:
+    input:
+        "results/neutral.nh",
+    output:
+        "results/dataset/tree.nh",
+    run:
+        tree = Phylo.read(input[0], "newick")
+        reorder_clades(tree.root, config["target"])
+        Phylo.write(tree, output[0], "newick")

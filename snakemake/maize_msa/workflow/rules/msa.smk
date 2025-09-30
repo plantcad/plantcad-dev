@@ -28,8 +28,7 @@ rule maf_filter_duplicates:
     input:
         "results/maf_raw/{chrom}.maf",
     output:
-        #temp("results/maf/{chrom}.maf"),
-        "results/maf/{chrom}.maf",
+        temp("results/maf/{chrom}.maf"),
     shell:
         "mafDuplicateFilter --maf {input} -k > {output}"
 
@@ -47,24 +46,14 @@ rule maf2fasta:
         "maf2fasta {input} fasta > {output}"
 
 
-rule reorder_tree:
-    input:
-        "config/tree.nh",
-    output:
-        "results/dataset/tree.nh",
-    run:
-        tree = Phylo.read(input[0], "newick")
-        reorder_clades(tree.root, config["target"])
-        Phylo.write(tree, output[0], "newick")
-
-
 rule extract_species:
     input:
-        "results/dataset/tree.nh",
+        "config/tree_topology.nh",
     output:
         "results/dataset/species.txt",
     run:
         tree = Phylo.read(input[0], "newick")
+        reorder_clades(tree.root, config["target"])
         species = pd.DataFrame(index=[node.name for node in tree.get_terminals()])
         assert species.index.values[0] == config["target"]
         species.to_csv(output[0], header=False, columns=[])
