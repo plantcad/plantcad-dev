@@ -1,0 +1,31 @@
+configfile: "config/config.yaml"
+
+include: "rules/common.smk"
+include: "rules/msa.smk"
+include: "rules/conservation.smk"
+
+
+rule all:
+    input:
+        #expand("results/maf/{chrom}.maf", chrom=CHROMS),
+        #expand("results/msa_view/4d_sites/{chrom}.ss", chrom=CHROMS),
+        #"results/msa_view/4d_sites/merged.ss",
+        #"results/neutral.mod",
+        #"results/upload.done",
+        "results/dataset/phastCons.bw",
+        "results/dataset/phyloP.bw",
+
+
+rule hf_upload:
+    input:
+        "results/dataset/README.md",
+        "results/dataset/msa.tar.gz",
+        "results/dataset/species.txt",
+        "results/dataset/tree.nh",
+        "results/dataset/species_metadata.tsv",
+        "results/dataset/phastCons.bw",
+        "results/dataset/phyloP.bw",
+    output:
+        touch("results/upload.done"),
+    shell:
+        "hf upload-large-folder {config[output_hf_path]} --repo-type dataset results/dataset"
