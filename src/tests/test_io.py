@@ -1,5 +1,5 @@
 import pytest
-from src.io import HfPath, hf_repo
+from src.io.hf import HfPath, hf_repo, RepoType
 
 
 class TestHfPath:
@@ -25,7 +25,7 @@ class TestHfPath:
         repo = HfPath(
             entity="org",
             name="data",
-            type="dataset",
+            type=RepoType.DATASET,
             internal=False,
             path_in_repo="train/file.csv",
         )
@@ -75,7 +75,9 @@ class TestHfPath:
     )
     def test_repo_id(self, entity, name, internal, expected):
         """Test HfPath.repo_id() generates correct repository IDs."""
-        repo = HfPath(entity=entity, name=name, type="dataset", internal=internal)
+        repo = HfPath(
+            entity=entity, name=name, type=RepoType.DATASET, internal=internal
+        )
         assert repo.repo_id() == expected
 
     @pytest.mark.parametrize(
@@ -200,7 +202,7 @@ class TestHfPath:
 
     def test_to_repo(self):
         """Test HfPath.to_repo() method."""
-        path = HfPath("org", "dataset", "dataset", False, "data/train.csv")
+        path = HfPath("org", "dataset", RepoType.DATASET, False, "data/train.csv")
         repo = path.to_repo()
         assert repo.entity == "org"
         assert repo.name == "dataset"
@@ -211,17 +213,17 @@ class TestHfPath:
     def test_split_path_in_repo(self):
         """Test HfPath.split_path_in_repo() method."""
         # Test with nested path
-        path = HfPath("org", "repo", "dataset", False, "data/train.csv")
+        path = HfPath("org", "repo", RepoType.DATASET, False, "data/train.csv")
         result = path.split_path_in_repo()
         assert result == ("data", "train.csv")
 
         # Test with file only (no subfolder)
-        path = HfPath("org", "repo", "dataset", False, "file.txt")
+        path = HfPath("org", "repo", RepoType.DATASET, False, "file.txt")
         result = path.split_path_in_repo()
         assert result == (None, "file.txt")
 
         # Test with no path_in_repo
-        path = HfPath("org", "repo", "dataset", False, None)
+        path = HfPath("org", "repo", RepoType.DATASET, False, None)
         result = path.split_path_in_repo()
         assert result == (None, None)
 
@@ -241,7 +243,7 @@ class TestFactoryFunctions:
         file_path = HfPath(
             entity="my-org",
             name="dataset",
-            type="dataset",
+            type=RepoType.DATASET,
             internal=False,
             path_in_repo="data/train.csv",
         )
@@ -253,7 +255,7 @@ class TestFactoryFunctions:
         repo_only = HfPath(
             entity="my-org",
             name="dataset",
-            type="dataset",
+            type=RepoType.DATASET,
             internal=False,
             path_in_repo=None,
         )
@@ -267,7 +269,7 @@ class TestFactoryFunctions:
         repo = HfPath(
             entity="my-org",
             name="dataset",
-            type="dataset",
+            type=RepoType.DATASET,
             internal=False,
             path_in_repo=None,
         )
@@ -294,7 +296,7 @@ class TestFactoryFunctions:
         repo = HfPath(
             entity="my-org",
             name="dataset",
-            type="dataset",
+            type=RepoType.DATASET,
             internal=False,
             path_in_repo=None,
         )
@@ -328,7 +330,7 @@ class TestFactoryFunctions:
         internal_repo = HfPath(
             entity="my-org",
             name="dataset",
-            type="dataset",
+            type=RepoType.DATASET,
             internal=True,
             path_in_repo=None,
         )
@@ -345,7 +347,7 @@ class TestFactoryFunctions:
         repo_with_path = HfPath(
             entity="my-org",
             name="dataset",
-            type="dataset",
+            type=RepoType.DATASET,
             internal=False,
             path_in_repo="existing/path/file.txt",
         )

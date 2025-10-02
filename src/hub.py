@@ -1,19 +1,16 @@
 """Shared model and tokenizer loading utilities."""
 
 import torch
-from typing import Type, TypeVar
+from typing import Type
 from transformers import AutoModel, AutoTokenizer, AutoConfig, AutoModelForMaskedLM
-
-# Bounded type alias for AutoModel subclasses
-AutoModelType = TypeVar("AutoModelType", bound=AutoModel)
 
 
 def _load_auto_model(
     path: str,
-    model_class: Type[AutoModelType],
+    model_class: Type[AutoModel],
     revision: str | None = None,
     dtype: torch.dtype = torch.bfloat16,
-) -> AutoModelType:
+) -> AutoModel:
     config = AutoConfig.from_pretrained(path, revision=revision, trust_remote_code=True)
     model = model_class.from_pretrained(
         path, config=config, revision=revision, trust_remote_code=True, dtype=dtype

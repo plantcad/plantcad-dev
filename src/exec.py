@@ -3,7 +3,7 @@ import time
 import os
 import ray
 
-from thalas.execution import Executor, ExecutorMainConfig, ExecutorStep
+from thalas.execution import Executor, ExecutorMainConfig, ExecutorStep, InputName
 from thalas.utilities.ray_utils import is_local_ray_cluster
 
 logger = logging.getLogger("ray")
@@ -14,7 +14,7 @@ logger = logging.getLogger("ray")
 # and modified only to remove the draccus.wrap decorator and compulsory logging config
 def executor_main(
     config: ExecutorMainConfig,
-    steps: list[ExecutorStep],
+    steps: list[ExecutorStep | InputName],
     description: str | None = None,
     init_logging: bool = True,
 ) -> Executor:
