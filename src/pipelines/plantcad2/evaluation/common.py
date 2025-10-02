@@ -15,7 +15,6 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
-import ray
 import torch
 import xarray as xr
 from upath import UPath
@@ -26,7 +25,6 @@ from torch.utils.data import DataLoader
 from src.hub import load_model_for_masked_lm, load_tokenizer
 from src.pipelines.plantcad2.evaluation.data import SequenceDataset
 from src.io.api import read_pandas_parquet, write_pandas_parquet, write_xarray_netcdf
-from src.io.hf import lock_hf_path
 
 
 logger = logging.getLogger("ray")
@@ -299,7 +297,6 @@ def generate_model_logits(
     simulation_mode: bool = True,
     worker_id: int | None = None,
     num_workers: int | None = None,
-    lock: ray.actor.ActorHandle | None = None,
 ) -> UPath:
     """Generate logits using either fake random data or real model inference.
 
@@ -323,8 +320,6 @@ def generate_model_logits(
         Worker ID for distributed processing (when None, processes all data).
     num_workers
         Total number of workers for distributed processing.
-    lock
-        Ray actor handle for HF write locking (optional).
 
     Returns
     -------
@@ -371,10 +366,8 @@ def generate_model_logits(
         )
 
         logits_path = output_dir / f"logits_{worker_id:05d}.nc"
-
-        with lock_hf_path(logits_path, lock) as locked_path:
-            logger.info(f"Writing logits to netcdf file at {locked_path}")
-            write_xarray_netcdf(logits, locked_path)
+        logger.info(f"Writing logits to netcdf file at {logits_path}")
+        write_xarray_netcdf(logits, logits_path)
 
     logger.info(f"Generated logits for {logits.sizes['samples']} sequences")
 
