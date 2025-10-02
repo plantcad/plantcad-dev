@@ -272,7 +272,7 @@ def load_and_downsample_dataset(
         dataset_path,
         data_files={dataset_split: f"{dataset_subdir}/{dataset_split}.tsv"},
     )
-    df = data[dataset_split].to_pandas()
+    df = data[dataset_split].to_pandas()  # pyrefly: ignore[missing-attribute]
 
     original_size = len(df)
 
@@ -282,11 +282,11 @@ def load_and_downsample_dataset(
     else:
         logger.info(f"Dataset size: {original_size} (no downsampling)")
 
-    dataset_path = dataset_dir / f"downsampled_{dataset_split}.parquet"
-    write_pandas_parquet(df, dataset_path)
-    logger.info(f"Saved downsampled dataset to: {dataset_path}")
+    output_path = dataset_dir / f"downsampled_{dataset_split}.parquet"
+    write_pandas_parquet(df, output_path)
+    logger.info(f"Saved downsampled dataset to: {output_path}")
 
-    return dataset_path, len(df)
+    return output_path, len(df)
 
 
 def generate_model_logits(
@@ -352,6 +352,10 @@ def generate_model_logits(
     else:
         logger.info("Generating real logits using pre-trained model")
 
+        # Type narrowing: worker_id and num_workers are guaranteed to be int here
+        assert worker_id is not None
+        assert num_workers is not None
+
         # Filter data for distributed processing
         df = df.iloc[worker_id::num_workers]
         logger.info(
@@ -413,27 +417,27 @@ def compute_plantcad_scores(
         logger.info(f"  {nuc}: {count}")
 
     # Compute scores by selecting reference nucleotide probability
-    scores = []
+    scores: list[float] = []
     for i, ref_nuc in enumerate(ref_nucleotides):
         if ref_nuc in nuc_to_idx:
-            score = logits_matrix[i, nuc_to_idx[ref_nuc]]
+            score = float(logits_matrix[i, nuc_to_idx[ref_nuc]])
         else:
-            score = np.nan
+            score = float(np.nan)
         scores.append(score)
 
-    scores = np.array(scores)
+    scores_array = np.array(scores)
 
     # Create scored dataset
     df = pd.DataFrame(
         {
             "sequence": sequences,
             "label": labels,
-            "plantcad_score": scores,
+            "plantcad_score": scores_array,
         }
     )
 
-    logger.info(f"Generated scores for {len(scores)} samples")
-    logger.info(f"Non-zero scores: {sum(scores != 0)}")
+    logger.info(f"Generated scores for {len(scores_array)} samples")
+    logger.info(f"Non-zero scores: {int((scores_array != 0).sum())}")
 
     return df
 

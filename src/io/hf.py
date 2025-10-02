@@ -275,12 +275,12 @@ class HfPath(HfRepo):
 
     def split_path_in_repo(
         self,
-    ) -> tuple[str, str] | tuple[None, str] | tuple[None, None]:
+    ) -> tuple[str | None, str | None]:
         """Split path_in_repo into subfolder and filename components.
 
         Returns
         -------
-        tuple[str, str] | tuple[None, str] | tuple[None, None]
+        tuple[str | None, str | None]
             Always returns a 2-tuple (subfolder, filename):
             - If path_in_repo is None: returns (None, None)
             - If path_in_repo has no directory separators: returns (None, filename)
@@ -381,7 +381,7 @@ class HfPath(HfRepo):
             return HfPath(
                 entity=entity,
                 name=name,
-                type=repo_type,
+                type=RepoType(repo_type),
                 internal=internal,
                 path_in_repo=path_in_repo,
             )
@@ -415,7 +415,7 @@ class HfPath(HfRepo):
 def hf_repo(
     name: str,
     entity: str = HF_ENTITY,
-    type: RepoType = "dataset",
+    type: RepoType = RepoType.DATASET,
     internal: bool = True,
 ) -> HfRepo:
     """Create an HfRepo instance for working with Hugging Face repositories.
@@ -601,6 +601,10 @@ def download_hf_file(
     # Split path into subfolder and filename components
     subfolder, filename = hf_path.split_path_in_repo()
 
+    # Validate that the path points to a file
+    if filename is None:
+        raise ValueError(f"Path cound not be resolved to a file: {path}")
+
     # Download file
     local_path = hf_hub_download(
         repo_id=hf_path.repo_id(),
@@ -738,11 +742,17 @@ def upload_hf_file(source: str | Path, destination: str | UPath, **kwargs) -> st
     parsed_path = HfPath.from_upath(destination)
     path_in_repo = parsed_path.path_in_repo
 
+    # Validate that the destination includes a file path
+    if path_in_repo is None:
+        raise ValueError(
+            f"Destination must include a file path in the repository: {destination}"
+        )
+
     # Upload to Hub
     api = HfApi()
     return api.upload_file(
         repo_id=parsed_path.repo_id(),
-        repo_type=parsed_path.type,
+        repo_type=str(parsed_path.type),
         path_or_fileobj=source,
         path_in_repo=path_in_repo,
         **kwargs,
@@ -770,7 +780,9 @@ def get_hf_lock() -> ray.actor.ActorHandle:
         return lock
     except ValueError:
         # Actor doesn't exist, create it
-        lock = AsyncLock.options(name="hf-write-lock", namespace=RAY_NAMESPACE).remote()
+        lock = AsyncLock.options(  # pyrefly: ignore[missing-attribute]
+            name="hf-write-lock", namespace=RAY_NAMESPACE
+        ).remote()
         logger.info("Started HF write lock actor")
         return lock
 

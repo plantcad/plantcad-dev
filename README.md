@@ -412,3 +412,11 @@ SkyPilot sets different environment variables about cluster nodes for the `setup
 In this context, it is worth noting that the `SKYPILOT_NODE_IPS` list available to `run` does not contain all cluster hosts.  It contains only those allocated for the task according to `num_nodes`.  This means that the Ray head node cannot be determined from this variable if all nodes are not used by the task.  If a subset of nodes is used, then `SKYPILOT_NODE_RANK` may be 0 on a worker node (depending on what nodes were chosen).  This contradicts the behavior documented at https://docs.skypilot.co/en/v0.5.0/reference/yaml-spec.html, which clearly implies that the head node should always be included: "Number of nodes (optional; defaults to 1) to launch including the head node".
 
 By contrast, `SKYPILOT_SETUP_NODE_IPS` contains all cluster hosts, so the Ray head node can always be determined from this variable.
+
+## Development
+
+Commands for development:
+
+- Tests: `uv run pytest`
+- Linting: `uv run pre-commit run --all-files`
+- Type checking: `uv run pyrefly check --summarize-errors`

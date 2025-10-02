@@ -91,14 +91,28 @@ name = "causal-conv1d"
 version = "1.5.0.post8"
 requires-dist = ["torch", "einops"]
 
+[tool.pyrefly]
+project-includes = ["src"]
+project-excludes = []
+python-platform = "linux"
+ignore-missing-source = true
+replace-imports-with-any = [
+  "torch.*",
+  "ray.*",
+  "submitit.*",
+  "pandas.*",
+]
+
 
 [dependency-groups]
 dev = [
   "pytest>=8.3.4",
+  "pytest-cov>=6.0.0",
   "ruff>=0.11.13",
   "pytype>=2024.10.11",
   "pre-commit>=4.2.0",
   "fabric>=3.2.2",
+  "pyrefly>=0.32.0",
 ]
 slurm = [
   "submitit>=1.5.1",
@@ -107,4 +121,13 @@ slurm = [
 [tool.pytest.ini_options]
 filterwarnings = [
   "ignore:UPath 'hf' filesystem not explicitly implemented:UserWarning:upath.core",
+]
+addopts = "--cov=src --cov-report=term-missing --cov-report=html"
+
+[tool.coverage.run]
+source = ["src"]
+omit = [
+  "*/tests/*",
+  "*/__pycache__/*",
+  "*/.venv/*",
 ]

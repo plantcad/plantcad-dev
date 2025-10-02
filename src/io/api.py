@@ -323,7 +323,7 @@ def read_xarray_mfdataset(
     path: str | UPath,
     concat_dim: str | None,
     cache_dir: str | Path | None = None,
-    combine: str = "nested",
+    combine: Literal["by_coords", "nested"] = "nested",
     glob: str = "*.nc",
     **kwargs: Any,
 ) -> xr.Dataset:
