@@ -21,7 +21,6 @@ from src.pipelines.plantcad2.evaluation.common import (
 )
 from src.utils.pipeline_utils import save_step_json, load_step_json
 from src.utils.ray_utils import get_available_gpus
-from src.io.hf import get_hf_lock
 from src.io.api import (
     read_pandas_parquet,
     write_pandas_parquet,
@@ -107,9 +106,6 @@ def generate_logits(config: GenerateLogitsConfig) -> None:
             simulation_mode=config.simulation_mode,
         )
     else:
-        # Get the HF lock before creating remote tasks
-        lock = get_hf_lock()
-
         # Determine number of workers
         num_workers = _get_num_workers(config.num_workers)
 
@@ -129,7 +125,6 @@ def generate_logits(config: GenerateLogitsConfig) -> None:
                 simulation_mode=config.simulation_mode,
                 worker_id=worker_id,
                 num_workers=num_workers,
-                lock=lock,
             )
             futures.append(future)
 

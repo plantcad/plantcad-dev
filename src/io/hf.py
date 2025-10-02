@@ -18,12 +18,9 @@ from huggingface_hub.constants import (
 from fsspec import AbstractFileSystem
 from dataclasses import dataclass
 from enum import StrEnum
-from contextlib import contextmanager
-from src.utils.ray_utils import AsyncLock
 from upath import UPath
-import ray
 
-from src.constants import RAY_NAMESPACE, HF_ENTITY
+from src.constants import HF_ENTITY
 
 
 # ------------------------------------------------------------------------------
@@ -603,7 +600,7 @@ def download_hf_file(
 
     # Validate that the path points to a file
     if filename is None:
-        raise ValueError(f"Path cound not be resolved to a file: {path}")
+        raise ValueError(f"Path could not be resolved to a file: {path}")
 
     # Download file
     local_path = hf_hub_download(
@@ -757,90 +754,3 @@ def upload_hf_file(source: str | Path, destination: str | UPath, **kwargs) -> st
         path_in_repo=path_in_repo,
         **kwargs,
     )
-
-
-# ------------------------------------------------------------------------------
-# Locking
-# ------------------------------------------------------------------------------
-
-
-def get_hf_lock() -> ray.actor.ActorHandle:
-    """Get the Ray Actor for HF write locking, creating it if it doesn't exist.
-
-    Returns
-    -------
-    ray.actor.ActorHandle
-        The Ray actor handle for the HF write lock
-    """
-    try:
-        # Check if the actor already exists;
-        # see: https://docs.ray.io/en/latest/ray-core/api/doc/ray.get_actor.html
-        lock = ray.get_actor("hf-write-lock", namespace=RAY_NAMESPACE)
-        logger.info("HF write lock actor already running")
-        return lock
-    except ValueError:
-        # Actor doesn't exist, create it
-        lock = AsyncLock.options(  # pyrefly: ignore[missing-attribute]
-            name="hf-write-lock", namespace=RAY_NAMESPACE
-        ).remote()
-        logger.info("Started HF write lock actor")
-        return lock
-
-
-@contextmanager
-def lock_hf_path(
-    path: PathLike, lock: ray.actor.ActorHandle, timeout_sec: int | None = None
-):
-    """Context manager for uploading to HF repositories with distributed locking.
-
-    This context manager handles the acquisition and release of a distributed lock
-    for safe concurrent uploads to Hugging Face repositories. It yields the path
-    for use within the context.
-
-    Parameters
-    ----------
-    path : PathLike (str | UPath)
-        Target path with hf:// protocol for the upload
-    lock
-        Ray actor handle for HF write locking
-    timeout_sec : int, optional
-        Timeout in seconds for lock acquisition, by default None (no timeout)
-
-    Yields
-    ------
-    UPath
-        The same path passed in, for convenience in the context
-
-    Raises
-    ------
-    ValueError
-        If lock acquisition fails within the timeout period
-
-    Examples
-    --------
-    >>> # Get the lock actor and use it
-    >>> lock = get_hf_lock()
-    >>> path = "hf://datasets/org/repo/logits.zarr"
-    >>> with lock_hf_path(path, lock) as locked_path:
-    ...     upload_hf_path(locked_path, lambda temp_path: dataset.to_zarr(temp_path))
-    ...
-    """
-    path = resolve_path(path)
-    logger.info(f"Saving data to {path}")
-    repo = HfPath.from_upath(path)
-    key = f"{repo.type}/{repo.entity}/{repo.name}"
-
-    logger.info(f"Acquiring lock for {key=}")
-    acquired = ray.get(lock.acquire.remote(key, timeout_sec=timeout_sec))
-    if not acquired:
-        raise ValueError(
-            f"Failed to acquire lock for {key=} after {timeout_sec} seconds"
-        )
-
-    try:
-        logger.info(f"Lock acquired for {key=}")
-        yield path
-        logger.info(f"Successfully completed operation for {path}")
-    finally:
-        logger.info(f"Releasing lock for {key=}")
-        ray.get(lock.release.remote(key))
