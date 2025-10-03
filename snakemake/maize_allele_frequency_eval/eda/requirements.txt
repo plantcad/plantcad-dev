@@ -1,4 +1,4 @@
-scipy
+biofoundation[mamba] @ git+https://github.com/Open-Athena/biofoundation.git@9d3fc4f10e268ab7397e95d0f022531380bc22ae
 marimo
 matplotlib
 numpy
@@ -6,6 +6,9 @@ pandas
 polars
 pyBigWig
 pyarrow
+scipy
 seaborn
 snakemake
+torch
 tqdm
+zarr

@@ -3,6 +3,11 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import pyBigWig
+from biofoundation.data import Genome
+from biofoundation.inference import run_llr_mlm
+from biofoundation.model import HFMaskedLM
+from datasets import Dataset
+from transformers import AutoModelForMaskedLM, AutoTokenizer
 from tqdm import tqdm
 import zarr
 
@@ -26,3 +31,10 @@ def run_vep_MSA_empirical_LLR(MSA, chrom, pos, ref, alt, pseudocounts=1):
 
 def _run_vep_MSA_empirical_LLR_batch(i, chrom, pos, ref, alt, msa):
     return run_vep_MSA_empirical_LLR(msa, chrom[i], pos[i], ref[i], alt[i])
+
+
+rule download_genome:
+    output:
+        "results/genome.fa.gz",
+    shell:
+        "wget -O {output} {config[genome_url]}"

@@ -4,12 +4,40 @@ raw_data_path: hf://datasets/plantcad/maize-allele-frequency-raw-data/Maize_Hapm
 
 msa_path: ../../maize_msa_train/results/msa.zarr
 
+genome_url: https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-62/fasta/zea_mays/dna/Zea_mays.Zm-B73-REFERENCE-NAM-5.0.dna_sm.toplevel.fa.gz
+
 models:
   - PlantCAD
   - phastCons
   - phyloP
   - MSA_empirical_LLR
+  - PCAD1-l20
+#  - PCAD1-l24
+#  - PCAD1-l28
+#  - PCAD1-l32
 
 conservation_models:
   phyloP: ../../maize_msa/results/dataset/phyloP.bw
   phastCons: ../../maize_msa/results/dataset/phastCons.bw
+
+hf_models:
+  PCAD1-l20:
+    kind: MLM
+    path: kuleshov-group/PlantCaduceus_l20
+    context_size: 512
+    per_device_eval_batch_size: 512
+  PCAD1-l24:
+    kind: MLM
+    path: kuleshov-group/PlantCaduceus_l24
+    context_size: 512
+    per_device_eval_batch_size: 512
+  PCAD1-l28:
+    kind: MLM
+    path: kuleshov-group/PlantCaduceus_l28
+    context_size: 512
+    per_device_eval_batch_size: 512
+  PCAD1-l32:
+    kind: MLM
+    path: kuleshov-group/PlantCaduceus_l32
+    context_size: 512
+    per_device_eval_batch_size: 512
