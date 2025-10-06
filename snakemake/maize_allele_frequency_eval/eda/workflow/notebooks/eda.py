@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.16.0"
+__generated_with = "0.16.5"
 app = marimo.App(width="medium")
 
 
@@ -139,9 +139,18 @@ def _(fisher_exact, palette, pl, plot_dir, plt, sns):
 def _(np):
     models = [
         "PlantCAD",
+        "PCAD1-l20",
+        "PCAD1-l24",
         "phastCons",
         "phyloP",
         "MSA_empirical_LLR",
+        "GPN-Star-v1",
+    ]
+
+    flip_sign_models = [
+        "PCAD1-l20",
+        "PCAD1-l24",
+        "GPN-Star-v1",
     ]
 
     palette = {m: f"C{i}" for i, m in enumerate(models)}
@@ -173,17 +182,27 @@ def _(np):
         "downstream_gene": "downstream-of-gene",
         "non_coding_transcript_exon": "ncRNA",
     }
-    return consequence_bundles, cs_renaming, models, ns, palette, quantiles
+    return (
+        consequence_bundles,
+        cs_renaming,
+        flip_sign_models,
+        models,
+        ns,
+        palette,
+        quantiles,
+    )
 
 
 @app.cell
-def _(consequence_bundles, cs_renaming, models, pl):
+def _(consequence_bundles, cs_renaming, flip_sign_models, models, pl):
     def load_V():
         V = pl.read_parquet("../../results/variants.parquet")
         for model in models:
             score = pl.read_parquet(f"../../results/predictions/{model}.parquet")[
                 "score"
             ]
+            if model in flip_sign_models:
+                score = -score
             V = V.with_columns(score.alias(model))
         return V
 
@@ -360,6 +379,12 @@ def _(barplot, pl, res2):
         height=2.3,
         y=0.95,
     )
+    return
+
+
+@app.cell
+def _(V, sns):
+    sns.histplot(data=V, x="GPN-Star-v1")
     return
 
 

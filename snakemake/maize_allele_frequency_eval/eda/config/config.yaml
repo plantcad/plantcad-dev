@@ -12,8 +12,9 @@ models:
   - phyloP
   - MSA_empirical_LLR
   - PCAD1-l20
-#  - PCAD1-l24
-#  - PCAD1-l28
+  - PCAD1-l24
+  - PCAD1-l28
+# leave this at the end (we already have precomputed)
 #  - PCAD1-l32
 
 conservation_models:
