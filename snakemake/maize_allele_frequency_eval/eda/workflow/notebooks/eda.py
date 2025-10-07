@@ -139,11 +139,11 @@ def _(fisher_exact, palette, pl, plot_dir, plt, sns):
 def _(np):
     models = [
         "PlantCAD",
-        "PCAD1-l20",
-        "PCAD1-l24",
+        # "PCAD1-l20",
+        # "PCAD1-l24",
         "phastCons",
         "phyloP",
-        "MSA_empirical_LLR",
+        # "MSA_empirical_LLR",
         "GPN-Star-v1",
     ]
 
@@ -358,6 +358,21 @@ def _(barplot, pl, res2):
         width=3,
         height=2.3,
         y=0.95,
+    )
+    return
+
+
+@app.cell
+def _(barplot, pl, res2):
+    barplot(
+        res2.filter(
+            pl.col("n") == 90,
+            pl.col("p_value") < 0.05,
+            pl.col("Consequence") == "all",
+        ),
+        "Odds ratio",
+        "Maize AC=4 vs. AF > 20%",
+        y=1.2,
     )
     return
 
