@@ -10,10 +10,6 @@ rule all:
     input:
         # Original model predictions
         expand("results/predictions/{model}.parquet", model=config["models"]),
-
-
-rule subsampling_analysis:
-    input:
         # PCAD1 analysis metrics
         "results/aggregated_metrics.parquet",
         # Metrics visualization
