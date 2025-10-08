@@ -84,13 +84,11 @@ subsample_seeds:
 
 # Quantiles for mean AF analysis
 analysis_quantiles:
-  - 0.001
   - 0.01
   - 0.1
 
 # Thresholds for odds ratio analysis (number of top variants)
 or_thresholds:
-  - 30
   - 60
   - 90
 
@@ -111,9 +109,9 @@ common_threshold:
 
 # Metrics to compute
 metrics_to_compute:
-  - mean_af_quantile
   - pearson_correlation
   - spearman_correlation
-  - odds_ratio
   - auroc
   - auprc
+  - mean_af_quantile
+  - odds_ratio

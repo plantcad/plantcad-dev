@@ -154,6 +154,32 @@ rule plot_aggregated_metrics:
         # Create custom palette from config
         custom_palette = [config["model_colors"][model] for model in config["pcad1_models"]]
 
+        # Create custom ordering for metrics based on config
+        # Map config metric names to actual metric patterns in data
+        metric_patterns = {
+            'pearson_correlation': lambda m: m == 'pearson_correlation',
+            'spearman_correlation': lambda m: m == 'spearman_correlation',
+            'auroc': lambda m: m == 'auroc',
+            'auprc': lambda m: m == 'auprc',
+            'mean_af_quantile': lambda m: m.startswith('mean_af_at_q'),
+            'odds_ratio': lambda m: m.startswith('odds_ratio_at_'),
+        }
+
+        # Get the ordered list of metrics from config
+        metrics_order_config = config['metrics_to_compute']
+
+        # Build the ordered list of actual metric names from the data
+        unique_metrics = df['metric'].unique()
+        metrics_ordered = []
+        for config_metric in metrics_order_config:
+            if config_metric in metric_patterns:
+                # Find all actual metrics matching this pattern
+                matching = [m for m in unique_metrics if metric_patterns[config_metric](m)]
+                metrics_ordered.extend(sorted(matching))  # Sort within category for consistency
+
+        # Convert metric column to ordered categorical
+        df['metric'] = pd.Categorical(df['metric'], categories=metrics_ordered, ordered=True)
+
         # Create relplot with log scale for x-axis
         g = sns.relplot(
             data=df,
