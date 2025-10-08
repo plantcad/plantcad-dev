@@ -74,13 +74,8 @@ subsample_n:
   - 100000
   - 1000000
 
-# Random seeds for subsampling (multiple seeds for robustness)
-subsample_seeds:
-  - 1
-  - 2
-  - 3
-  - 4
-  - 5
+# Number of random seeds for subsampling (for robustness)
+n_subsample_seeds: 100
 
 # Quantiles for mean AF analysis
 analysis_quantiles:

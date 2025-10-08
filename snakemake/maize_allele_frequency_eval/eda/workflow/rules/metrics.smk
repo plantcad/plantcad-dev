@@ -22,8 +22,11 @@ rule compute_all_metrics_for_n:
         # Collect all metric results
         all_results = []
 
-        # Iterate over all seeds
-        for seed in config["subsample_seeds"]:
+        # Generate seeds from count and iterate with progress bar
+        n_seeds = config["n_subsample_seeds"]
+        seeds = range(1, n_seeds + 1)
+
+        for seed in tqdm(seeds, desc=f"Seeds (n={n})"):
             # Sample data for this seed
             data = complete_data.sample(n=n, seed=seed)
 
