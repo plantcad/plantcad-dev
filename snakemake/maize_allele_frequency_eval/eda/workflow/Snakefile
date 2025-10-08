@@ -27,3 +27,19 @@ rule download_dataset:
         "results/variants.parquet",
     shell:
         "wget -O {output} {config[dataset_path]}"
+
+
+rule add_is_repeat:
+    input:
+        "results/variants.parquet",
+        "results/genome.fa.gz",
+    output:
+        "results/variants.annotated.parquet",
+    run:
+        V = pl.read_parquet(input[0])
+        genome = Genome(input[1])
+        V = V.with_columns(is_repeat=np.array([
+            genome(v["chrom"], v["pos"]-1, v["pos"]).islower()
+            for v in tqdm(V.iter_rows(named=True), total=len(V))
+        ]))
+        V.write_parquet(output[0])

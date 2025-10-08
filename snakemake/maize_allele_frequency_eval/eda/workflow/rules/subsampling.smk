@@ -5,7 +5,7 @@
 
 rule create_complete_dataset:
     input:
-        variants="results/variants.parquet",
+        variants="results/variants.annotated.parquet",
         predictions=expand("results/predictions/{model}.parquet", model=config["pcad1_models"]),
     output:
         "results/complete_dataset.parquet",
@@ -33,6 +33,7 @@ rule create_complete_dataset:
 
         # NOW filter to analysis chromosomes
         complete_data = filter_analysis_chromosomes(complete_data)
+        complete_data = complete_data.filter(~pl.col("is_repeat"))
 
         # Create binary labels for classification metrics (rare vs common)
         rare_threshold = config["rare_threshold"]

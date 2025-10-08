@@ -9,15 +9,15 @@ def _():
     import matplotlib.pyplot as plt
     import numpy as np
     import polars as pl
-    from scipy.stats import fisher_exact
+    from scipy.stats import fisher_exact, pearsonr, spearmanr
     import seaborn as sns
     from tqdm import tqdm
 
-    return fisher_exact, np, pl, plt, sns, tqdm
+    return fisher_exact, np, pearsonr, pl, plt, sns, spearmanr, tqdm
 
 
 @app.cell
-def _(fisher_exact, palette, pl, plot_dir, plt, sns):
+def _(fisher_exact, main_palette, model_renaming, pl, plot_dir, plt, sns):
     def get_odds_ratio(df, threshold_ns):
         rows = []
         negative_set = df.filter(~pl.col("label")).sort("score", descending=True)
@@ -67,8 +67,10 @@ def _(fisher_exact, palette, pl, plot_dir, plt, sns):
         hspace=None,
         x=None,
         y=None,
+        palette=main_palette,
     ):
         df = df_pl.to_pandas()
+        df.Model = df.Model.replace(model_renaming)
         if groupby not in df.columns:
             df[groupby] = "all"
         groups = df[groupby].unique()
@@ -84,7 +86,10 @@ def _(fisher_exact, palette, pl, plot_dir, plt, sns):
 
         for group, ax in zip(groups, axes.flat):
             df_g = df[df[groupby] == group].sort_values(metric, ascending=False)
-            n_pos, n_neg = df_g.n_pos.iloc[0], df_g.n_neg.iloc[0]
+            if metric not in ["Pearson", "Spearman"]:
+                n_pos, n_neg = df_g.n_pos.iloc[0], df_g.n_neg.iloc[0]
+            else:
+                n = df_g.n.iloc[0]
 
             if metric == "AUROC":
                 baseline = 0.5
@@ -92,6 +97,8 @@ def _(fisher_exact, palette, pl, plot_dir, plt, sns):
                 baseline = n_pos / (n_pos + n_neg)
             elif metric == "Odds ratio":
                 baseline = 1
+            elif metric in ["Pearson", "Spearman"]:
+                baseline = 0
 
             g = sns.barplot(
                 data=df_g,
@@ -103,7 +110,10 @@ def _(fisher_exact, palette, pl, plot_dir, plt, sns):
                 ax=ax,
             )
             sns.despine()
-            sample_size = f"n={format_number(n_pos)} vs. {format_number(n_neg)}"
+            if metric not in ["Pearson", "Spearman"]:
+                sample_size = f"n={format_number(n_pos)} vs. {format_number(n_neg)}"
+            else:
+                sample_size = f"n={format_number(n)}"
             subtitle = f"{group}\n{sample_size}" if len(groups) > 1 else sample_size
             g.set_title(subtitle, fontsize=10)
             g.set(xlim=baseline, ylabel="")
@@ -132,32 +142,49 @@ def _(fisher_exact, palette, pl, plot_dir, plt, sns):
 
         return g
 
-    return barplot, get_odds_ratio
+    return (barplot,)
 
 
 @app.cell
 def _(np):
     models = [
         "PlantCAD",
-        # "PCAD1-l20",
-        # "PCAD1-l24",
+        "PCAD1-l20",
+        "PCAD1-l24",
+        "PCAD1-l28",
         "phastCons",
         "phyloP",
-        # "MSA_empirical_LLR",
+        "MSA_empirical_LLR",
         "GPN-Star-v1",
     ]
 
     flip_sign_models = [
         "PCAD1-l20",
         "PCAD1-l24",
+        "PCAD1-l28",
+        "PCAD1-l32",
         "GPN-Star-v1",
     ]
 
-    palette = {m: f"C{i}" for i, m in enumerate(models)}
+    model_renaming = {
+        "PlantCAD": "PCAD1-l32",
+        "MSA_empirical_LLR": "MSA-LLR",
+    }
 
-    quantiles = np.logspace(-4, 0, 10)
+    main_palette = {model_renaming.get(m, m): f"C{i}" for i, m in enumerate(models)}
 
-    ns = [30, 60, 90]
+    alt_palette = {
+        "PCAD1-l20": "#6baed6",  # Light blue (20 layers)
+        "PCAD1-l24": "#2171b5",  # Medium blue (24 layers)
+        "PCAD1-l28": "#08519c",  # Medium-dark blue (28 layers)
+        "PCAD1-l32": "#08306b",  # Dark blue (32 layers)
+    }
+
+    quantiles = np.logspace(-3, 0, 20)
+
+    min_n = 100
+
+    # ns = [30, 60, 90]
 
     consequence_bundles = {
         "splice-region": [
@@ -183,12 +210,14 @@ def _(np):
         "non_coding_transcript_exon": "ncRNA",
     }
     return (
+        alt_palette,
         consequence_bundles,
         cs_renaming,
         flip_sign_models,
+        main_palette,
+        min_n,
+        model_renaming,
         models,
-        ns,
-        palette,
         quantiles,
     )
 
@@ -196,7 +225,7 @@ def _(np):
 @app.cell
 def _(consequence_bundles, cs_renaming, flip_sign_models, models, pl):
     def load_V():
-        V = pl.read_parquet("../../results/variants.parquet")
+        V = pl.read_parquet("../../results/variants.annotated.parquet")
         for model in models:
             score = pl.read_parquet(f"../../results/predictions/{model}.parquet")[
                 "score"
@@ -209,6 +238,8 @@ def _(consequence_bundles, cs_renaming, flip_sign_models, models, pl):
     V = load_V()
     print(len(V))
     V = V.drop_nulls(subset=models)
+    print(len(V))
+    V = V.filter(~pl.col("is_repeat"))
     print(len(V))
     V = V.sample(
         fraction=1, shuffle=True, seed=42
@@ -263,26 +294,66 @@ def _(V, consequences, models, pl, quantiles, tqdm):
 
 
 @app.cell
-def _(pl, res, sns):
+def _(main_palette, min_n, model_renaming, pl, res, sns):
     # """
-    min_n = 100
-
-    g = sns.relplot(
-        data=res.filter(pl.col("n") >= min_n),
+    sns.relplot(
+        data=res.filter(pl.col("n") >= min_n).with_columns(
+            pl.col("model").replace(model_renaming)
+        ),
         x="q",
         y="Mean AF",
         hue="model",
         col="consequence",
         kind="line",
-        marker="o",
+        # marker="o",
         col_wrap=4,
         height=2.0,
         facet_kws=dict(sharey=False),
-    )
-    g.set_titles(col_template="{col_name}")
-    g.set(xscale="log")
-    g
+        palette=main_palette,
+    ).set_titles(col_template="{col_name}").set(xscale="log")
     # """;
+    return
+
+
+@app.cell
+def _(main_palette, min_n, model_renaming, models3, pl, res, sns):
+    # """
+    sns.relplot(
+        data=res.filter(
+            pl.col("n") >= min_n, pl.col("model").is_in(models3)
+        ).with_columns(pl.col("model").replace(model_renaming)),
+        x="q",
+        y="Mean AF",
+        hue="model",
+        col="consequence",
+        kind="line",
+        # marker="o",
+        col_wrap=4,
+        height=2.5,
+        facet_kws=dict(sharey=False),
+        palette=main_palette,
+    ).set_titles(col_template="{col_name}").set(xscale="log")
+    # """;
+    return
+
+
+@app.cell
+def _(alt_palette, min_n, model_renaming, models2, pl, res, sns):
+    sns.relplot(
+        data=res.filter(
+            pl.col("n") >= min_n, pl.col("model").is_in(models2)
+        ).with_columns(pl.col("model").replace(model_renaming)),
+        x="q",
+        y="Mean AF",
+        hue="model",
+        col="consequence",
+        kind="line",
+        # marker="o",
+        col_wrap=4,
+        height=2.5,
+        facet_kws=dict(sharey=False),
+        palette=alt_palette,
+    ).set_titles(col_template="{col_name}").set(xscale="log")
     return
 
 
@@ -293,7 +364,8 @@ def _(V):
 
 
 @app.cell
-def _(V, pl):
+def _():
+    """
     V5 = V.with_columns(
         pl.when(pl.col("AC") == 4)
         .then(True)
@@ -303,11 +375,13 @@ def _(V, pl):
         .alias("label")
     ).drop_nulls(subset="label")
     V5["label"].value_counts()
-    return (V5,)
+    """
+    return
 
 
 @app.cell
-def _(V5, consequences, get_odds_ratio, models, ns, pl, tqdm):
+def _():
+    """
     res2 = []
     for c in tqdm(consequences):
         V_c = V5 if c == "all" else V5.filter(consequence=c)
@@ -324,11 +398,13 @@ def _(V5, consequences, get_odds_ratio, models, ns, pl, tqdm):
             res2.append(odds_ratio)
     res2 = pl.concat(res2)
     res2
-    return (res2,)
+    """
+    return
 
 
 @app.cell
-def _(barplot, pl, res2):
+def _():
+    """
     barplot(
         res2.filter(
             pl.col("n") == 30,
@@ -339,11 +415,13 @@ def _(barplot, pl, res2):
         "Maize AC=4 vs. AF > 20%",
         y=1.2,
     )
+    """
     return
 
 
 @app.cell
-def _(barplot, pl, res2):
+def _():
+    """;
     barplot(
         res2.filter(
             pl.col("n") == 30,
@@ -359,11 +437,13 @@ def _(barplot, pl, res2):
         height=2.3,
         y=0.95,
     )
+    """
     return
 
 
 @app.cell
-def _(barplot, pl, res2):
+def _():
+    """;
     barplot(
         res2.filter(
             pl.col("n") == 90,
@@ -374,11 +454,13 @@ def _(barplot, pl, res2):
         "Maize AC=4 vs. AF > 20%",
         y=1.2,
     )
+    """
     return
 
 
 @app.cell
-def _(barplot, pl, res2):
+def _():
+    """;
     barplot(
         res2.filter(
             pl.col("n") == 90,
@@ -394,12 +476,117 @@ def _(barplot, pl, res2):
         height=2.3,
         y=0.95,
     )
+    """
     return
 
 
 @app.cell
-def _(V, sns):
-    sns.histplot(data=V, x="GPN-Star-v1")
+def _(V, consequences, models, pearsonr, pl, spearmanr, tqdm):
+    res3 = []
+    for c2 in tqdm(consequences):
+        V6 = V if c2 == "all" else V.filter(consequence=c2)
+        for m2 in models:
+            res3.append(
+                [
+                    c2,
+                    m2,
+                    len(V6),
+                    pearsonr(V6["AF"], -V6[m2])[0],
+                    spearmanr(V6["AF"], -V6[m2])[0],
+                ]
+            )
+    res3 = pl.DataFrame(
+        res3, ["Consequence", "Model", "n", "Pearson", "Spearman"], orient="row"
+    ).with_columns(pl.col("Consequence").str.replace("_variant", ""))
+    res3
+    return (res3,)
+
+
+@app.cell
+def _(barplot, res3):
+    barplot(
+        res3,
+        "Pearson",
+        "Correlation with Maize AF",
+        nrows=4,
+        ncols=3,
+        hspace=0.8,
+        wspace=1.2,
+        width=3.5,
+        height=2.3,
+        y=0.95,
+    )
+    return
+
+
+@app.cell
+def _(barplot, res3):
+    barplot(
+        res3,
+        "Spearman",
+        "Correlation with Maize AF",
+        nrows=4,
+        ncols=3,
+        hspace=0.8,
+        wspace=1.2,
+        width=3.5,
+        height=2.3,
+        y=0.95,
+    )
+    return
+
+
+@app.cell
+def _():
+    models2 = [
+        "PCAD1-l20",
+        "PCAD1-l24",
+        "PCAD1-l28",
+        "PlantCAD",
+    ]
+
+    models3 = [
+        "PlantCAD",
+        "phastCons",
+        "phyloP",
+        "MSA_empirical_LLR",
+        # "GPN-Star-v1",
+    ]
+    return models2, models3
+
+
+@app.cell
+def _(alt_palette, barplot, models2, pl, res3):
+    barplot(
+        res3.filter(pl.col("Model").is_in(models2)),
+        "Pearson",
+        "Correlation with Maize AF",
+        nrows=4,
+        ncols=3,
+        hspace=0.8,
+        wspace=1.2,
+        width=3.5,
+        height=2.3,
+        y=0.95,
+        palette=alt_palette,
+    )
+    return
+
+
+@app.cell
+def _(barplot, models3, pl, res3):
+    barplot(
+        res3.filter(pl.col("Model").is_in(models3)),
+        "Pearson",
+        "Correlation with Maize AF",
+        nrows=4,
+        ncols=3,
+        hspace=0.8,
+        wspace=1.2,
+        width=3.5,
+        height=2.3,
+        y=0.95,
+    )
     return
 
 

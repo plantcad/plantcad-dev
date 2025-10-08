@@ -71,6 +71,8 @@ model_colors:
 # Subsample sizes (n) for stability analysis
 subsample_n:
   - 10000
+  - 20000
+  - 30000
   - 100000
   - 1000000
 
