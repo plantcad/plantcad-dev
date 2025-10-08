@@ -87,10 +87,10 @@ analysis_quantiles:
   - 0.01
   - 0.1
 
-# Thresholds for odds ratio analysis (number of top variants)
-or_thresholds:
-  - 60
-  - 90
+# Quantiles for odds ratio analysis (top q fraction of variants)
+or_quantiles:
+  - 0.01
+  - 0.1
 
 # Chromosomes to use for analysis (validation set)
 analysis_chromosomes:

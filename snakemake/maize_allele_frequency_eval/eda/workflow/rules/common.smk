@@ -116,9 +116,9 @@ def compute_spearman_correlation(variants_df, score_col):
     return -corr
 
 
-def compute_odds_ratio(variants_df, score_col, n_top_variants):
+def compute_odds_ratio(variants_df, score_col, quantile):
     """
-    Compute odds ratio for rare vs common variants in the top n variants by score.
+    Compute odds ratio for rare vs common variants in the top quantile by score.
 
     Parameters:
     -----------
@@ -126,8 +126,8 @@ def compute_odds_ratio(variants_df, score_col, n_top_variants):
         Variants with label and score columns (label column pre-computed)
     score_col : str
         Name of the score column
-    n_top_variants : int
-        Number of top variants to consider
+    quantile : float
+        Quantile threshold (e.g., 0.01 for top 1%)
 
     Returns:
     --------
@@ -136,6 +136,10 @@ def compute_odds_ratio(variants_df, score_col, n_top_variants):
     """
     # Filter to only rows with valid labels (drop null labels)
     df_with_labels = variants_df.filter(pl.col("label").is_not_null())
+
+    # Calculate number of variants from quantile
+    n_total = len(df_with_labels)
+    n_top_variants = int(n_total * quantile)
 
     # Sort by score (descending) and take top n
     top_variants = df_with_labels.sort(score_col, descending=True).head(n_top_variants)

@@ -13,7 +13,7 @@ rule compute_all_metrics_for_n:
         models = config["pcad1_models"]
         required_cols = ["AF", "label"] + models
         quantiles = config["analysis_quantiles"]
-        or_thresholds = config["or_thresholds"]
+        or_quantiles = config["or_quantiles"]
         n = int(wildcards.n)
 
         # Load complete dataset once with only required columns
@@ -72,18 +72,18 @@ rule compute_all_metrics_for_n:
                     "score": spearman
                 })
 
-                # 4. Odds ratio at different thresholds
-                for threshold in or_thresholds:
+                # 4. Odds ratio at different quantiles
+                for quantile in or_quantiles:
                     or_score = compute_odds_ratio(
                         data.select(["label", score_col]),
                         score_col,
-                        threshold
+                        quantile
                     )
                     all_results.append({
                         "model": model,
                         "n": n,
                         "seed": seed,
-                        "metric": f"odds_ratio_at_{threshold}",
+                        "metric": f"odds_ratio_at_q{quantile}",
                         "score": or_score
                     })
 
@@ -162,7 +162,7 @@ rule plot_aggregated_metrics:
             'auroc': lambda m: m == 'auroc',
             'auprc': lambda m: m == 'auprc',
             'mean_af_quantile': lambda m: m.startswith('mean_af_at_q'),
-            'odds_ratio': lambda m: m.startswith('odds_ratio_at_'),
+            'odds_ratio': lambda m: m.startswith('odds_ratio_at_q'),
         }
 
         # Get the ordered list of metrics from config
