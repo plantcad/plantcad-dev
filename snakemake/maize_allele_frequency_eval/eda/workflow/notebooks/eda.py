@@ -338,6 +338,26 @@ def _(main_palette, min_n, model_renaming, models3, pl, res, sns):
 
 
 @app.cell
+def _(main_palette, min_n, model_renaming, models3, pl, res, sns):
+    sns.relplot(
+        data=res.filter(
+            pl.col("n") >= min_n, pl.col("model").is_in(models3)
+        ).with_columns(pl.col("model").replace(model_renaming)),
+        x="q",
+        y="Mean AF",
+        hue="model",
+        col="consequence",
+        kind="line",
+        # marker="o",
+        col_wrap=4,
+        height=2.5,
+        facet_kws=dict(sharey=False),
+        palette=main_palette,
+    ).set_titles(col_template="{col_name}")
+    return
+
+
+@app.cell
 def _(alt_palette, min_n, model_renaming, models2, pl, res, sns):
     sns.relplot(
         data=res.filter(
