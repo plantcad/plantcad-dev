@@ -42,3 +42,77 @@ hf_models:
     path: kuleshov-group/PlantCaduceus_l32
     context_size: 512
     per_device_eval_batch_size: 512
+
+# =============================================================================
+# PCAD1 MODEL ANALYSIS CONFIGURATION
+# =============================================================================
+
+# PCAD1 models to analyze (start with available ones)
+pcad1_models:
+  - PCAD1-l20
+  - PCAD1-l24
+  - PlantCAD  # Precomputed PCAD1-l32
+  # PCAD1-l28 will be added when available
+
+# Models that require sign flipping (PCAD1 models use negative log-likelihood)
+flip_sign_models:
+  - PCAD1-l20
+  - PCAD1-l24
+  - PCAD1-l28
+  - PCAD1-l32
+
+# Model colors for visualization (continuous blue progression by layer count)
+model_colors:
+  PCAD1-l20: "#6baed6"  # Light blue (20 layers)
+  PCAD1-l24: "#2171b5"  # Medium blue (24 layers)
+  PlantCAD: "#08306b"   # Dark blue (32 layers)
+
+# Subsample fractions for stability analysis
+subsample_fractions:
+  - 0.01
+  - 0.1
+  - 1.0
+
+# Random seeds for subsampling (multiple seeds for robustness)
+subsample_seeds:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+
+# Quantiles for mean AF analysis
+analysis_quantiles:
+  - 0.001
+  - 0.01
+  - 0.1
+
+# Thresholds for odds ratio analysis (number of top variants)
+or_thresholds:
+  - 30
+  - 60
+  - 90
+
+# Chromosomes to use for analysis (validation set)
+analysis_chromosomes:
+  - "1"
+  - "3"
+  - "5"
+  - "7"
+  - "9"
+
+# Thresholds for rare vs common variant classification
+rare_threshold:
+  AC: 4  # Rare variants have AC = 4
+
+common_threshold:
+  AF: 0.20  # Common variants have AF > 20%
+
+# Metrics to compute
+metrics_to_compute:
+  - mean_af_quantile
+  - pearson_correlation
+  - spearman_correlation
+  - odds_ratio
+  - auroc
+  - auprc

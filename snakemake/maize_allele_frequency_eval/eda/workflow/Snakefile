@@ -2,11 +2,22 @@ configfile: "config/config.yaml"
 
 include: "rules/common.smk"
 include: "rules/models.smk"
+include: "rules/subsampling.smk"
+include: "rules/metrics.smk"
 
 
 rule all:
     input:
+        # Original model predictions
         expand("results/predictions/{model}.parquet", model=config["models"]),
+
+
+rule subsampling_analysis:
+    input:
+        # PCAD1 analysis metrics
+        "results/aggregated_metrics.parquet",
+        # Metrics visualization
+        "results/metrics_plot.pdf",
 
 
 rule download_dataset:
