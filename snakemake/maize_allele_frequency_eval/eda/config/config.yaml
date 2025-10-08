@@ -51,8 +51,8 @@ hf_models:
 pcad1_models:
   - PCAD1-l20
   - PCAD1-l24
+  - PCAD1-l28
   - PlantCAD  # Precomputed PCAD1-l32
-  # PCAD1-l28 will be added when available
 
 # Models that require sign flipping (PCAD1 models use negative log-likelihood)
 flip_sign_models:
@@ -65,6 +65,7 @@ flip_sign_models:
 model_colors:
   PCAD1-l20: "#6baed6"  # Light blue (20 layers)
   PCAD1-l24: "#2171b5"  # Medium blue (24 layers)
+  PCAD1-l28: "#08519c"  # Medium-dark blue (28 layers)
   PlantCAD: "#08306b"   # Dark blue (32 layers)
 
 # Subsample fractions for stability analysis

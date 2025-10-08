@@ -1,191 +1,124 @@
 # =============================================================================
 # METRICS COMPUTATION RULES
 # =============================================================================
-# Rules for computing various metrics on variants and subsampled data
+# Refactored to compute all metrics for all models in a single job per subsample
 
-rule compute_mean_af_quantile:
+rule compute_all_metrics:
     input:
         "results/subsamples/frac_{fraction}_seed_{seed}.parquet",
     output:
-        "results/metrics/mean_af_quantile/{model}_{fraction}_{seed}.parquet",
+        "results/metrics/all_metrics_frac_{fraction}_seed_{seed}.parquet",
     run:
+        # Load subsample with all required columns
+        models = config["pcad1_models"]
+        required_cols = ["AF", "label"] + models
+        data = pl.read_parquet(input[0], columns=required_cols)
 
-        # Load only required columns for mean AF quantile
-        model_name = wildcards.model
-        score_col = model_name
-        data = pl.read_parquet(input[0], columns=["AF", score_col])
-
-        # Compute mean AF at quantiles
+        # Get configuration
         quantiles = config["analysis_quantiles"]
-        results = compute_mean_af_at_quantile(data, score_col, quantiles)
+        or_thresholds = config["or_thresholds"]
+        fraction = float(wildcards.fraction)
+        seed = int(wildcards.seed)
 
-        # Transform to consistent format with quantile in metric name
-        metric_rows = []
-        for row in results.iter_rows(named=True):
-            metric_rows.append({
-                "model": model_name,
-                "fraction": float(wildcards.fraction),
-                "seed": int(wildcards.seed),
-                "metric": f"mean_af_at_q{row['quantile']}",  # e.g., "mean_af_at_q0.001", "mean_af_at_q0.01"
-                "score": row["mean_af"]
+        # Collect all metric results
+        all_results = []
+
+        # Iterate over all models
+        for model in models:
+            score_col = model
+
+            # 1. Mean AF at quantiles
+            mean_af_results = compute_mean_af_at_quantile(
+                data.select(["AF", score_col]),
+                score_col,
+                quantiles
+            )
+            for row in mean_af_results.iter_rows(named=True):
+                all_results.append({
+                    "model": model,
+                    "fraction": fraction,
+                    "seed": seed,
+                    "metric": f"mean_af_at_q{row['quantile']}",
+                    "score": row["mean_af"]
+                })
+
+            # 2. Pearson correlation
+            pearson = compute_pearson_correlation(
+                data.select(["AF", score_col]),
+                score_col
+            )
+            all_results.append({
+                "model": model,
+                "fraction": fraction,
+                "seed": seed,
+                "metric": "pearson_correlation",
+                "score": pearson
             })
 
-        result_df = pl.DataFrame(metric_rows)
-
-        # Save results
-        result_df.write_parquet(output[0])
-
-
-rule compute_pearson_correlation:
-    input:
-        "results/subsamples/frac_{fraction}_seed_{seed}.parquet",
-    output:
-        "results/metrics/pearson_correlation/{model}_{fraction}_{seed}.parquet",
-    run:
-
-        # Load only required columns for Pearson correlation
-        model_name = wildcards.model
-        score_col = model_name
-        data = pl.read_parquet(input[0], columns=["AF", score_col])
-
-        # Compute Pearson correlation
-        result = compute_pearson_correlation(data, score_col)
-
-        # Create result DataFrame
-        result_df = pl.DataFrame([{
-            "model": model_name,
-            "fraction": float(wildcards.fraction),
-            "seed": int(wildcards.seed),
-            "metric": "pearson_correlation",
-            "score": result
-        }])
-
-        # Save results
-        result_df.write_parquet(output[0])
-
-
-rule compute_spearman_correlation:
-    input:
-        "results/subsamples/frac_{fraction}_seed_{seed}.parquet",
-    output:
-        "results/metrics/spearman_correlation/{model}_{fraction}_{seed}.parquet",
-    run:
-
-        # Load only required columns for Spearman correlation
-        model_name = wildcards.model
-        score_col = model_name
-        data = pl.read_parquet(input[0], columns=["AF", score_col])
-
-        # Compute Spearman correlation
-        result = compute_spearman_correlation(data, score_col)
-
-        # Create result DataFrame
-        result_df = pl.DataFrame([{
-            "model": model_name,
-            "fraction": float(wildcards.fraction),
-            "seed": int(wildcards.seed),
-            "metric": "spearman_correlation",
-            "score": result
-        }])
-
-        # Save results
-        result_df.write_parquet(output[0])
-
-
-rule compute_odds_ratio:
-    input:
-        "results/subsamples/frac_{fraction}_seed_{seed}.parquet",
-    output:
-        "results/metrics/odds_ratio/{model}_{fraction}_{seed}.parquet",
-    run:
-
-        # Load only required columns for odds ratio (label and score)
-        model_name = wildcards.model
-        score_col = model_name
-        data = pl.read_parquet(input[0], columns=["label", score_col])
-
-        # Compute odds ratio for different thresholds
-        thresholds = config["or_thresholds"]
-        results = []
-
-        for threshold in thresholds:
-            result = compute_odds_ratio(data, score_col, threshold)
-
-            results.append({
-                "model": model_name,
-                "fraction": float(wildcards.fraction),
-                "seed": int(wildcards.seed),
-                "metric": f"odds_ratio_at_{threshold}",
-                "score": result
+            # 3. Spearman correlation
+            spearman = compute_spearman_correlation(
+                data.select(["AF", score_col]),
+                score_col
+            )
+            all_results.append({
+                "model": model,
+                "fraction": fraction,
+                "seed": seed,
+                "metric": "spearman_correlation",
+                "score": spearman
             })
 
-        result_df = pl.DataFrame(results)
+            # 4. Odds ratio at different thresholds
+            for threshold in or_thresholds:
+                or_score = compute_odds_ratio(
+                    data.select(["label", score_col]),
+                    score_col,
+                    threshold
+                )
+                all_results.append({
+                    "model": model,
+                    "fraction": fraction,
+                    "seed": seed,
+                    "metric": f"odds_ratio_at_{threshold}",
+                    "score": or_score
+                })
 
-        # Save results
+            # 5. AUROC
+            auroc = compute_auroc(
+                data.select(["label", score_col]),
+                score_col
+            )
+            all_results.append({
+                "model": model,
+                "fraction": fraction,
+                "seed": seed,
+                "metric": "auroc",
+                "score": auroc
+            })
+
+            # 6. AUPRC
+            auprc = compute_auprc(
+                data.select(["label", score_col]),
+                score_col
+            )
+            all_results.append({
+                "model": model,
+                "fraction": fraction,
+                "seed": seed,
+                "metric": "auprc",
+                "score": auprc
+            })
+
+        # Create and save combined results DataFrame
+        result_df = pl.DataFrame(all_results)
         result_df.write_parquet(output[0])
 
-
-rule compute_auroc:
-    input:
-        "results/subsamples/frac_{fraction}_seed_{seed}.parquet",
-    output:
-        "results/metrics/auroc/{model}_{fraction}_{seed}.parquet",
-    run:
-
-        # Load only required columns for AUROC (label and score)
-        model_name = wildcards.model
-        score_col = model_name
-        data = pl.read_parquet(input[0], columns=["label", score_col])
-
-        # Compute AUROC
-        auroc = compute_auroc(data, score_col)
-
-        # Create result DataFrame
-        result_df = pl.DataFrame([{
-            "model": model_name,
-            "fraction": float(wildcards.fraction),
-            "seed": int(wildcards.seed),
-            "metric": "auroc",
-            "score": auroc
-        }])
-
-        # Save results
-        result_df.write_parquet(output[0])
-
-
-rule compute_auprc:
-    input:
-        "results/subsamples/frac_{fraction}_seed_{seed}.parquet",
-    output:
-        "results/metrics/auprc/{model}_{fraction}_{seed}.parquet",
-    run:
-
-        # Load only required columns for AUPRC (label and score)
-        model_name = wildcards.model
-        score_col = model_name
-        data = pl.read_parquet(input[0], columns=["label", score_col])
-
-        # Compute AUPRC
-        auprc = compute_auprc(data, score_col)
-
-        # Create result DataFrame
-        result_df = pl.DataFrame([{
-            "model": model_name,
-            "fraction": float(wildcards.fraction),
-            "seed": int(wildcards.seed),
-            "metric": "auprc",
-            "score": auprc
-        }])
-
-        # Save results
-        result_df.write_parquet(output[0])
+        print(f"Computed all metrics for fraction={fraction}, seed={seed}: {len(all_results)} results")
 
 
 rule aggregate_all_metrics:
     input:
-        expand("results/metrics/{metric}/{model}_{fraction}_{seed}.parquet",
-               metric=config["metrics_to_compute"],
-               model=config["pcad1_models"],
+        expand("results/metrics/all_metrics_frac_{fraction}_seed_{seed}.parquet",
                fraction=config["subsample_fractions"],
                seed=config["subsample_seeds"])
     output:
@@ -197,11 +130,13 @@ rule aggregate_all_metrics:
             df = pl.read_parquet(file)
             all_metrics.append(df)
 
-        # Combine all metrics (now all have same column structure)
+        # Combine all metrics
         combined_metrics = pl.concat(all_metrics)
 
         # Save aggregated results
         combined_metrics.write_parquet(output[0])
+
+        print(f"Aggregated {len(combined_metrics)} metric results from {len(input)} files")
 
 
 rule plot_aggregated_metrics:
@@ -248,7 +183,7 @@ rule plot_aggregated_metrics:
         g.set(xlim=(0.005, 1.5))
 
         # Add title
-        g.fig.suptitle('PCAD1 Model Performance Metrics\nAcross Subsample Fractions\n(sd across seeds)',
+        g.fig.suptitle('PCAD1 performance metrics (sd)',
                       y=1.02, fontsize=16, fontweight='bold')
 
         # Save plot
