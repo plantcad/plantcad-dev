@@ -18,6 +18,8 @@ rule subsampling_analysis:
         "results/aggregated_metrics.parquet",
         # Metrics visualization
         "results/metrics_plot.pdf",
+        # Ordering consistency
+        "results/ordering_consistency_plot.pdf",
 
 
 rule download_dataset:

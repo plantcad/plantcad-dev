@@ -142,6 +142,59 @@ rule aggregate_all_metrics:
         print(f"Aggregated {len(combined_metrics)} metric results from {len(input)} files")
 
 
+rule compute_ordering_consistency:
+    input:
+        "results/aggregated_metrics.parquet",
+    output:
+        "results/ordering_consistency.parquet",
+    run:
+        # Load aggregated metrics
+        df = pl.read_parquet(input[0])
+
+        # Get expected model order from config
+        expected_order = config["pcad1_models"]
+
+        # Collect results
+        consistency_results = []
+
+        # Group by n and metric
+        for (n, metric), group in df.group_by(["n", "metric"]):
+            # For each seed, check if models are in correct order
+            correct_count = 0
+            total_seeds = 0
+
+            for seed, seed_group in group.group_by("seed"):
+                total_seeds += 1
+
+                # Get scores for each model in expected order
+                scores = []
+                for model in expected_order:
+                    model_score = seed_group.filter(pl.col("model") == model)["score"][0]
+                    scores.append(model_score)
+
+                # Check strict monotonic increasing
+                is_correct = all(scores[i] < scores[i+1] for i in range(len(scores)-1))
+                if is_correct:
+                    correct_count += 1
+
+            # Calculate proportion
+            proportion_correct = correct_count / total_seeds if total_seeds > 0 else 0
+
+            consistency_results.append({
+                "n": n,
+                "metric": metric,
+                "proportion_correct": proportion_correct,
+                "n_correct": correct_count,
+                "n_total": total_seeds
+            })
+
+        # Save results
+        result_df = pl.DataFrame(consistency_results)
+        result_df.write_parquet(output[0])
+
+        print(f"Computed ordering consistency for {len(consistency_results)} (n, metric) combinations")
+
+
 rule plot_aggregated_metrics:
     input:
         "results/aggregated_metrics.parquet",
@@ -219,3 +272,66 @@ rule plot_aggregated_metrics:
         plt.close()
 
         print(f"Saved metrics plot to {output[0]}")
+
+
+rule plot_ordering_consistency:
+    input:
+        "results/ordering_consistency.parquet",
+    output:
+        "results/ordering_consistency_plot.pdf",
+    run:
+        # Load consistency data
+        df = pl.read_parquet(input[0]).to_pandas()
+
+        # Set up plot style
+        plt.figure(figsize=(4, 4))
+
+        # Create custom ordering for metrics based on config
+        metric_patterns = {
+            'pearson_correlation': lambda m: m == 'pearson_correlation',
+            'spearman_correlation': lambda m: m == 'spearman_correlation',
+            'auroc': lambda m: m == 'auroc',
+            'auprc': lambda m: m == 'auprc',
+            'mean_af_quantile': lambda m: m.startswith('mean_af_at_q'),
+            'odds_ratio': lambda m: m.startswith('odds_ratio_at_q'),
+        }
+
+        metrics_order_config = config['metrics_to_compute']
+        unique_metrics = df['metric'].unique()
+        metrics_ordered = []
+        for config_metric in metrics_order_config:
+            if config_metric in metric_patterns:
+                matching = [m for m in unique_metrics if metric_patterns[config_metric](m)]
+                metrics_ordered.extend(sorted(matching))
+
+        # Convert to categorical for consistent ordering
+        df['metric'] = pd.Categorical(df['metric'], categories=metrics_ordered, ordered=True)
+        df = df.sort_values('metric')
+
+        # Convert proportion to percentage
+        df['percentage_correct'] = df['proportion_correct'] * 100
+
+        # Create line plot
+        sns.lineplot(
+            data=df,
+            x='n',
+            y='percentage_correct',
+            hue='metric',
+            marker='o',
+            markersize=8,
+            linewidth=2
+        )
+
+        # Formatting
+        plt.xscale('log')
+        plt.xlabel('Sample size (n)', fontsize=12)
+        plt.ylabel('% with correct model ordering', fontsize=12)
+        plt.title('Model ordering consistency across seeds', fontsize=14)
+        plt.legend(title='Metric', bbox_to_anchor=(1.05, 1), loc='upper left')
+        sns.despine()
+
+        # Save plot
+        plt.savefig(output[0], bbox_inches='tight')
+        plt.close()
+
+        print(f"Saved ordering consistency plot to {output[0]}")
