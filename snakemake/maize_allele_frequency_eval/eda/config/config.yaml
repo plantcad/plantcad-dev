@@ -68,11 +68,11 @@ model_colors:
   PCAD1-l28: "#08519c"  # Medium-dark blue (28 layers)
   PlantCAD: "#08306b"   # Dark blue (32 layers)
 
-# Subsample fractions for stability analysis
-subsample_fractions:
-  - 0.01
-  - 0.1
-  - 1.0
+# Subsample sizes (n) for stability analysis
+subsample_n:
+  - 10000
+  - 100000
+  - 1000000
 
 # Random seeds for subsampling (multiple seeds for robustness)
 subsample_seeds:

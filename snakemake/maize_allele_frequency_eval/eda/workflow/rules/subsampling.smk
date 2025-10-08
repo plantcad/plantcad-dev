@@ -59,31 +59,3 @@ rule create_complete_dataset:
         complete_data.write_parquet(output[0])
 
         print(f"Created complete dataset with {len(complete_data)} variants and {len(config['pcad1_models'])} models")
-
-
-rule create_subsamples:
-    input:
-        "results/complete_dataset.parquet",
-    output:
-        "results/subsamples/frac_{fraction}_seed_{seed}.parquet",
-    run:
-        # Load complete dataset
-        complete_data = pl.read_parquet(input[0])
-
-        # Use polars built-in sampling with seed
-        fraction = float(wildcards.fraction)
-        seed = int(wildcards.seed)
-
-        # Sample using polars (works fine for fraction=1.0)
-        subsample = complete_data.sample(
-            fraction=fraction,
-            seed=seed
-        )
-
-        # Sort by coordinates for consistency
-        subsample = subsample.sort(COORDINATES)
-
-        # Save subsample
-        subsample.write_parquet(output[0])
-
-        print(f"Created subsample: {fraction} fraction, seed {seed}, {len(subsample)} variants")
