@@ -1,5 +1,9 @@
+git+https://github.com/Open-Athena/biofoundation.git
 huggingface_hub
+numpy
 pandas
 polars
 pyarrow
+pyyaml
 snakemake
+tqdm
