@@ -1,4 +1,4 @@
-dataset_path: https://huggingface.co/datasets/plantcad/maize-allele-frequency/resolve/main/test.parquet
+dataset_path: https://huggingface.co/datasets/plantcad/maize-allele-frequency/resolve/7f5b1303a2dea11df9a1b454bcb796a2beb131a0/test.parquet
 
 raw_data_path: hf://datasets/plantcad/maize-allele-frequency-raw-data/Maize_Hapmap3_Exclude_TE_PlantCAD_Zero_Shot_Scores.parquet
 
