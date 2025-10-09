@@ -62,7 +62,33 @@ rule compute_all_metrics_for_n:
                     "score": pearson
                 })
 
-                # 3. Spearman correlation
+                # 3. Pearson correlation with logit(AF)
+                pearson_logit = compute_pearson_correlation_logit(
+                    data.select(["AF", score_col]),
+                    score_col
+                )
+                all_results.append({
+                    "model": model,
+                    "n": n,
+                    "seed": seed,
+                    "metric": "pearson_correlation_logit",
+                    "score": pearson_logit
+                })
+
+                # 4. Pearson correlation with log(AF)
+                pearson_log = compute_pearson_correlation_log(
+                    data.select(["AF", score_col]),
+                    score_col
+                )
+                all_results.append({
+                    "model": model,
+                    "n": n,
+                    "seed": seed,
+                    "metric": "pearson_correlation_log",
+                    "score": pearson_log
+                })
+
+                # 5. Spearman correlation
                 spearman = compute_spearman_correlation(
                     data.select(["AF", score_col]),
                     score_col
@@ -75,7 +101,7 @@ rule compute_all_metrics_for_n:
                     "score": spearman
                 })
 
-                # 4. Odds ratio at different quantiles
+                # 6. Odds ratio at different quantiles
                 for quantile in or_quantiles:
                     or_score = compute_odds_ratio(
                         data.select(["label", score_col]),
@@ -90,7 +116,7 @@ rule compute_all_metrics_for_n:
                         "score": or_score
                     })
 
-                # 5. AUROC
+                # 7. AUROC
                 auroc = compute_auroc(
                     data.select(["label", score_col]),
                     score_col
@@ -103,7 +129,7 @@ rule compute_all_metrics_for_n:
                     "score": auroc
                 })
 
-                # 6. AUPRC
+                # 8. AUPRC
                 auprc = compute_auprc(
                     data.select(["label", score_col]),
                     score_col
@@ -214,6 +240,8 @@ rule plot_aggregated_metrics:
         # Map config metric names to actual metric patterns in data
         metric_patterns = {
             'pearson_correlation': lambda m: m == 'pearson_correlation',
+            'pearson_correlation_logit': lambda m: m == 'pearson_correlation_logit',
+            'pearson_correlation_log': lambda m: m == 'pearson_correlation_log',
             'spearman_correlation': lambda m: m == 'spearman_correlation',
             'auroc': lambda m: m == 'auroc',
             'auprc': lambda m: m == 'auprc',
@@ -255,9 +283,8 @@ rule plot_aggregated_metrics:
             facet_kws=dict(sharey=False),
         )
 
-        # Set log scale for x-axis and clean up subtitles
+        # Clean up axes
         for ax in g.axes.flat:
-            ax.set_xscale('log')
             ax.grid(True, alpha=0.3)
 
         # Clean up subtitles
@@ -289,6 +316,8 @@ rule plot_ordering_consistency:
         # Create custom ordering for metrics based on config
         metric_patterns = {
             'pearson_correlation': lambda m: m == 'pearson_correlation',
+            'pearson_correlation_logit': lambda m: m == 'pearson_correlation_logit',
+            'pearson_correlation_log': lambda m: m == 'pearson_correlation_log',
             'spearman_correlation': lambda m: m == 'spearman_correlation',
             'auroc': lambda m: m == 'auroc',
             'auprc': lambda m: m == 'auprc',
@@ -323,7 +352,6 @@ rule plot_ordering_consistency:
         )
 
         # Formatting
-        plt.xscale('log')
         plt.xlabel('Sample size (n)', fontsize=12)
         plt.ylabel('% with correct model ordering', fontsize=12)
         plt.title('Model ordering consistency across seeds', fontsize=14)

@@ -106,6 +106,40 @@ def compute_pearson_correlation(variants_df, score_col):
     return -corr
 
 
+def compute_pearson_correlation_logit(variants_df, score_col):
+    """Compute Pearson correlation between log(AF/(1-AF)) and model scores (flipped for higher=better)."""
+    # Convert to pandas for scipy
+    df_pd = variants_df.select(["AF", score_col]).to_pandas()
+
+    # Assert that all AF values are strictly between 0 and 1
+    assert (df_pd["AF"] > 0).all(), "All AF values must be > 0 for logit transformation"
+    assert (df_pd["AF"] < 1).all(), "All AF values must be < 1 for logit transformation"
+
+    # Compute logit transformation: log(AF/(1-AF))
+    logit_af = np.log(df_pd["AF"] / (1 - df_pd["AF"]))
+
+    corr, _ = pearsonr(logit_af, df_pd[score_col])
+    # Flip sign so higher correlation means better (more functional -> lower AF -> lower logit)
+    return -corr
+
+
+def compute_pearson_correlation_log(variants_df, score_col):
+    """Compute Pearson correlation between log(AF) and model scores (flipped for higher=better)."""
+    # Convert to pandas for scipy
+    df_pd = variants_df.select(["AF", score_col]).to_pandas()
+
+    # Assert that all AF values are strictly between 0 and 1
+    assert (df_pd["AF"] > 0).all(), "All AF values must be > 0 for log transformation"
+    assert (df_pd["AF"] < 1).all(), "All AF values must be < 1 for log transformation"
+
+    # Compute log transformation: log(AF)
+    log_af = np.log(df_pd["AF"])
+
+    corr, _ = pearsonr(log_af, df_pd[score_col])
+    # Flip sign so higher correlation means better (more functional -> lower AF -> lower log)
+    return -corr
+
+
 def compute_spearman_correlation(variants_df, score_col):
     """Compute Spearman correlation between AF and model scores (flipped for higher=better)."""
     # Convert to pandas for scipy

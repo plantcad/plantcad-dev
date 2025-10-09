@@ -70,11 +70,11 @@ model_colors:
 
 # Subsample sizes (n) for stability analysis
 subsample_n:
+  - 5000
   - 10000
   - 20000
   - 30000
   - 100000
-  - 1000000
 
 # Number of random seeds for subsampling (for robustness)
 n_subsample_seeds: 100
@@ -107,6 +107,8 @@ common_threshold:
 # Metrics to compute
 metrics_to_compute:
   - pearson_correlation
+  - pearson_correlation_logit
+  - pearson_correlation_log
   - spearman_correlation
   - auroc
   - auprc
