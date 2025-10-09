@@ -40,28 +40,205 @@ rule process_variants:
         )
 
 
-rule cp_dataset:
+rule group_consequences:
     input:
         "results/variants.annot.parquet",
     output:
-        "results/dataset/test.parquet",
+        "results/variants.annot.grouped.parquet",
+    run:
+        V = pl.read_parquet(input[0])
+        V = V.filter(~pl.col("consequence").is_in(config["consequence_filter_out"]))
+        V = V.with_columns(original_consequence=pl.col("consequence"))
+        for new_c, old_cs in config["consequence_groups"].items():
+            V = V.with_columns(
+                pl.when(pl.col("consequence").is_in(old_cs))
+                .then(pl.lit(new_c))
+                .otherwise(pl.col("consequence"))
+                .alias("consequence")
+            )
+        V.write_parquet(output[0])
+
+
+rule download_genome:
+    output:
+        "results/genome.fa.gz",
     shell:
-        "cp {input} {output}"
+        "wget -O {output} {config[genome_url]}"
 
 
-rule cp_readme:
+rule add_is_repeat:
     input:
-        "config/hf_readme.md",
+        "results/variants.annot.grouped.parquet",
+        "results/genome.fa.gz",
+    output:
+        "results/variants.annot.grouped.add_is_repeat.parquet",
+    run:
+        V = pl.read_parquet(input[0])
+        genome = Genome(input[1])
+        V = V.with_columns(is_repeat=np.array([
+            genome(v["chrom"], v["pos"]-1, v["pos"]).islower()
+            for v in tqdm(V.iter_rows(named=True), total=len(V))
+        ]))
+        V.write_parquet(output[0])
+
+
+rule full_config:
+    input:
+        "results/variants.annot.grouped.add_is_repeat.parquet",
+    output:
+        expand("results/dataset/full/{split}.parquet", split=SPLITS),
+    run:
+        V = pl.read_parquet(input[0])
+        for split, path in zip(SPLITS, output):
+            V.filter(pl.col("chrom").is_in(SPLIT_CHROMS[split])).write_parquet(path)
+
+
+rule subsample_all_consequences_config:
+    input:
+        "results/dataset/full/{split}.parquet",
+    output:
+        "results/dataset/{max_n}_all_consequences/{split}.parquet",
+    run:
+        max_n = config["subsampling"]["max_n"][wildcards.max_n]
+        max_n_per_consequence = max_n // len(config["consequences"])
+        seed = config["subsampling"]["seed"]
+        V = pl.read_parquet(input[0]).filter(~pl.col("is_repeat")).drop("is_repeat")
+        res = []
+        for consequence in config["consequences"]:
+            V_consequence = V.filter(pl.col("consequence") == consequence)
+            n = min(max_n_per_consequence, len(V_consequence))
+            V_consequence = V_consequence.sample(n=n, seed=seed)
+            res.append(V_consequence)
+        V = pl.concat(res).sort(COORDINATES)
+        V.write_parquet(output[0])
+
+
+rule subsample_consequence_config:
+    input:
+        "results/dataset/full/{split}.parquet",
+    output:
+        "results/dataset/{max_n}_{consequence}/{split}.parquet",
+    wildcard_constraints:
+        consequence="|".join(config["consequences"]),
+    run:
+        consequence = wildcards.consequence
+        max_n = config["subsampling"]["max_n"][wildcards.max_n]
+        seed = config["subsampling"]["seed"]
+        V = (
+            pl.read_parquet(input[0])
+            .filter(~pl.col("is_repeat"), pl.col("consequence") == consequence)
+            .drop("is_repeat")
+        )
+        n = min(max_n, len(V))
+        V = V.sample(n=n, seed=seed).sort(COORDINATES)
+        V.write_parquet(output[0])
+
+
+rule create_readme:
     output:
         "results/dataset/README.md",
-    shell:
-        "cp {input} {output}"
+    run:
+        # Build YAML frontmatter
+        frontmatter = {
+            "license": "apache-2.0",
+            "tags": ["biology", "genomics", "dna", "variant-effect-prediction"],
+            "configs": []
+        }
+
+        # Add config entries
+        for config_name in CONFIGS:
+            config_entry = {
+                "config_name": config_name,
+                "data_files": [
+                    {"split": split, "path": f"{config_name}/{split}.parquet"}
+                    for split in SPLITS
+                ]
+            }
+            # Mark default config
+            if config_name == config["default_config"]:
+                config_entry["default"] = True
+            frontmatter["configs"].append(config_entry)
+
+        # Build markdown body
+        body_parts = []
+
+        # Title and description
+        body_parts.append("# Maize Allele Frequency Dataset")
+        body_parts.append("")
+        body_parts.append("Source data described in [PlantCaduceus paper](https://www.pnas.org/doi/10.1073/pnas.2421738122). Raw data available at [plantcad/maize-allele-frequency-raw-data](https://huggingface.co/datasets/plantcad/maize-allele-frequency-raw-data/).")
+        body_parts.append("")
+
+        # Splits section
+        body_parts.append("## Splits")
+        body_parts.append("")
+        for split, chroms in SPLIT_CHROMS.items():
+            chrom_list = ", ".join(chroms)
+            body_parts.append(f"- **{split}**: Chromosomes {chrom_list}")
+        body_parts.append("")
+
+        # Configurations section
+        body_parts.append("## Configurations")
+        body_parts.append("")
+        body_parts.append("### full")
+        body_parts.append("Complete dataset with all variants.")
+        body_parts.append("")
+        body_parts.append("### Subsampled Configurations")
+        body_parts.append("Subsampled datasets (excluding repeats) with max N variants, filtered by consequence type:")
+        num_consequences = len(config["consequences"])
+        body_parts.append(f"- `{{max_n}}_all_consequences`: Balanced sample across all consequence types (~N/{num_consequences} per consequence)")
+        body_parts.append("- `{max_n}_{consequence}`: Up to N variants of specific consequence type")
+        body_parts.append("")
+        max_n_values = ", ".join(config["subsampling"]["max_n"].keys())
+        body_parts.append(f"Available sample sizes: {max_n_values}")
+        body_parts.append("")
+        consequence_list = ", ".join(config["consequences"])
+        body_parts.append(f"Available consequence types: {consequence_list}")
+        body_parts.append("")
+
+        # Consequence Types section
+        body_parts.append("## Consequence Types")
+        body_parts.append("")
+        body_parts.append("Individual consequence types and their grouped variants:")
+        for group_name, group_consequences in config["consequence_groups"].items():
+            consequence_str = ", ".join(group_consequences)
+            body_parts.append(f"- **{group_name}**: {consequence_str}")
+        body_parts.append("")
+        filtered_list = ", ".join(config["consequence_filter_out"])
+        body_parts.append(f"Filtered consequences (excluded from dataset): {filtered_list}")
+        body_parts.append("")
+
+        # Data Schema section
+        body_parts.append("## Data Schema")
+        body_parts.append("")
+        body_parts.append("- `chrom`: Chromosome")
+        body_parts.append("- `pos`: Position")
+        body_parts.append("- `ref`: Reference allele")
+        body_parts.append("- `alt`: Alternate allele")
+        body_parts.append("- `AC`: Allele count")
+        body_parts.append("- `AN`: Allele number")
+        body_parts.append("- `AF`: Allele frequency")
+        body_parts.append("- `MAF`: Minor allele frequency")
+        body_parts.append("- `consequence`: Consequence type (after grouping)")
+        body_parts.append("- `original_consequence`: Original Ensembl VEP consequence (before grouping)")
+
+        # Combine everything
+        yaml_str = yaml.dump(frontmatter, sort_keys=False, default_flow_style=False)
+        markdown_body = "\n".join(body_parts)
+
+        with open(output[0], "w") as f:
+            f.write("---\n")
+            f.write(yaml_str)
+            f.write("---\n\n")
+            f.write(markdown_body)
+            f.write("\n")
 
 
 rule hf_upload:
     input:
         "results/dataset/README.md",
-        "results/dataset/test.parquet",
+        expand(
+            "results/dataset/{config}/{split}.parquet", config=CONFIGS, split=SPLITS
+        ),
     output:
         touch("results/upload.done"),
     shell:

@@ -6,3 +6,58 @@ ensembl_vep:
   species: zea_mays
   cache_url: https://ftp.ebi.ac.uk/ensemblgenomes/pub/plants/release-62/variation/indexed_vep_cache/zea_mays_vep_62_Zm-B73-REFERENCE-NAM-5.0.tar.gz
   cache_version: 62
+
+genome_url: https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-62/fasta/zea_mays/dna/Zea_mays.Zm-B73-REFERENCE-NAM-5.0.dna_sm.toplevel.fa.gz
+
+# this is a tiny proportion and doesn't have a clear functional significance
+consequence_filter_out:
+  - stop_retained_variant
+
+consequence_groups:
+    grouped_splice_region:
+      - splice_polypyrimidine_tract_variant
+      - splice_region_variant
+      - splice_donor_region_variant
+      - splice_donor_variant
+      - splice_donor_5th_base_variant
+      - splice_acceptor_variant
+
+    grouped_start_stop:
+      - stop_gained
+      - stop_lost
+      - start_lost
+
+consequences:
+  - intergenic_variant
+  - intron_variant
+  - upstream_gene_variant
+  - downstream_gene_variant
+  - 3_prime_UTR_variant
+  - synonymous_variant
+  - missense_variant
+  - 5_prime_UTR_variant
+  - grouped_splice_region
+  - non_coding_transcript_exon_variant
+  - grouped_start_stop
+
+split_chroms:
+  validation:
+    - "1"
+    - "3"
+    - "5"
+    - "7"
+    - "9"
+  test:
+    - "2"
+    - "4"
+    - "6"
+    - "8"
+    - "10"
+
+subsampling:
+  seed: 42
+  max_n:
+    "10k": 10000
+    "20k": 20000
+
+default_config: "10k_all_consequences"
