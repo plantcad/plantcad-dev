@@ -17,7 +17,7 @@ snakemake --cores all
 
 ## Evaluation Metrics
 
-This analysis evaluates genomic conservation models by assessing how well their functional prediction scores correlate with allele frequency patterns in maize populations. The following metrics are computed across different sample sizes and random seeds to assess model performance and stability.
+This analysis evaluates genomic conservation models by assessing how well their functional prediction scores correlate with allele frequency patterns in maize populations. Ten complementary metrics are computed across multiple sample sizes (5k-100k variants) and 100 random seeds to assess model performance and stability.
 
 ### Core Premise
 
@@ -40,7 +40,37 @@ All metrics are based on the biological hypothesis that **functionally important
 
 ---
 
-### 2. Spearman Correlation
+### 2. Pearson Correlation with Logit(AF)
+
+**What it measures:** Linear correlation between model scores and logit-transformed allele frequencies.
+
+**Computation:**
+- Pearson correlation coefficient between log(AF/(1-AF)) and model scores
+- **Sign flipped** so that negative correlation becomes positive (higher is better)
+- **Validates** that 0 < AF < 1 before transformation
+
+**Interpretation:** The logit transformation emphasizes changes at extreme allele frequency values (near 0 and 1), making this metric more sensitive to model performance on rare and nearly fixed variants. This is particularly useful for identifying models that excel at predicting highly functional or highly deleterious variants.
+
+**Range:** -1 to 1 (after flip: higher is better, 0 = baseline)
+
+---
+
+### 3. Pearson Correlation with Log(AF)
+
+**What it measures:** Linear correlation between model scores and log-transformed allele frequencies.
+
+**Computation:**
+- Pearson correlation coefficient between log(AF) and model scores
+- **Sign flipped** so that negative correlation becomes positive (higher is better)
+- **Validates** that 0 < AF < 1 before transformation
+
+**Interpretation:** The log transformation emphasizes differences at lower allele frequencies, making this metric more sensitive to model performance on rare variants. This is useful for evaluating how well models distinguish among variants with low allele frequencies, which are often of greater functional importance.
+
+**Range:** -1 to 1 (after flip: higher is better, 0 = baseline)
+
+---
+
+### 4. Spearman Correlation
 
 **What it measures:** Rank-based (monotonic) correlation between model scores and allele frequencies.
 
@@ -55,7 +85,7 @@ All metrics are based on the biological hypothesis that **functionally important
 
 ---
 
-### 3. AUROC (Area Under ROC Curve)
+### 5. AUROC (Area Under ROC Curve)
 
 **What it measures:** Binary classification performance for distinguishing rare from common variants.
 
@@ -71,7 +101,7 @@ All metrics are based on the biological hypothesis that **functionally important
 
 ---
 
-### 4. AUPRC (Area Under Precision-Recall Curve)
+### 6. AUPRC (Area Under Precision-Recall Curve)
 
 **What it measures:** Precision-recall performance for identifying rare variants.
 
@@ -86,7 +116,7 @@ All metrics are based on the biological hypothesis that **functionally important
 
 ---
 
-### 5. Mean AF at Quantile
+### 7. Mean AF at Quantile
 
 **What it measures:** Average allele frequency among variants with the highest model scores.
 
@@ -105,7 +135,7 @@ All metrics are based on the biological hypothesis that **functionally important
 
 ---
 
-### 6. Odds Ratio
+### 8. Odds Ratio
 
 **What it measures:** Enrichment of rare variants vs common variants among top-scoring predictions.
 
@@ -127,6 +157,32 @@ All metrics are based on the biological hypothesis that **functionally important
 **Range:** 0 to ∞ (1.0 = no enrichment, >1 = enrichment)
 
 **Example:** `odds_ratio_at_q0.01` compares top 1% vs bottom 1% of variants
+
+---
+
+## Configuration Parameters
+
+The analysis is configured with the following key parameters (see `config/config.yaml`):
+
+### Sample Sizes
+- **`subsample_n`:** [5000, 10000, 20000, 30000, 100000]
+- Metrics are computed at each sample size to assess stability
+
+### Robustness Testing
+- **`n_subsample_seeds`:** 100
+- Each analysis is repeated 100 times with different random seeds
+
+### Metric-Specific Parameters
+- **`analysis_quantiles`:** [0.01, 0.1] — Used for Mean AF at Quantile metrics
+- **`or_quantiles`:** [0.01, 0.1] — Used for Odds Ratio metrics
+
+### Variant Classification Thresholds
+- **Rare variants:** AC = 4 (allele count of exactly 4)
+- **Common variants:** AF > 0.20 (allele frequency greater than 20%)
+
+### Dataset Configuration
+- **`analysis_chromosomes`:** [1, 3, 5, 7, 9] — Validation set chromosomes
+- **Models evaluated:** PCAD1-l20, PCAD1-l24, PCAD1-l28, PlantCAD (PCAD1-l32)
 
 ---
 
