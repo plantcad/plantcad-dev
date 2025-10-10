@@ -2,24 +2,7 @@ dataset_path: https://huggingface.co/datasets/plantcad/maize-allele-frequency/re
 
 raw_data_path: hf://datasets/plantcad/maize-allele-frequency-raw-data/Maize_Hapmap3_Exclude_TE_PlantCAD_Zero_Shot_Scores.parquet
 
-msa_path: ../../maize_msa_train/results/msa.zarr
-
 genome_url: https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-62/fasta/zea_mays/dna/Zea_mays.Zm-B73-REFERENCE-NAM-5.0.dna_sm.toplevel.fa.gz
-
-models:
-  - PlantCAD
-  - phastCons
-  - phyloP
-  - MSA_empirical_LLR
-  - PCAD1-l20
-  - PCAD1-l24
-  - PCAD1-l28
-# leave this at the end (we already have precomputed)
-#  - PCAD1-l32
-
-conservation_models:
-  phyloP: ../../maize_msa/results/dataset/phyloP.bw
-  phastCons: ../../maize_msa/results/dataset/phastCons.bw
 
 hf_models:
   PCAD1-l20:
