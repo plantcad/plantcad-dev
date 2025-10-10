@@ -1,0 +1,99 @@
+dataset_path: https://huggingface.co/datasets/plantcad/maize-allele-frequency/resolve/7f5b1303a2dea11df9a1b454bcb796a2beb131a0/test.parquet
+
+raw_data_path: hf://datasets/plantcad/maize-allele-frequency-raw-data/Maize_Hapmap3_Exclude_TE_PlantCAD_Zero_Shot_Scores.parquet
+
+genome_url: https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-62/fasta/zea_mays/dna/Zea_mays.Zm-B73-REFERENCE-NAM-5.0.dna_sm.toplevel.fa.gz
+
+hf_models:
+  PCAD1-l20:
+    kind: MLM
+    path: kuleshov-group/PlantCaduceus_l20
+    context_size: 512
+    per_device_eval_batch_size: 512
+  PCAD1-l24:
+    kind: MLM
+    path: kuleshov-group/PlantCaduceus_l24
+    context_size: 512
+    per_device_eval_batch_size: 512
+  PCAD1-l28:
+    kind: MLM
+    path: kuleshov-group/PlantCaduceus_l28
+    context_size: 512
+    per_device_eval_batch_size: 512
+  PCAD1-l32:
+    kind: MLM
+    path: kuleshov-group/PlantCaduceus_l32
+    context_size: 512
+    per_device_eval_batch_size: 512
+
+# =============================================================================
+# PCAD1 MODEL ANALYSIS CONFIGURATION
+# =============================================================================
+
+# PCAD1 models to analyze (start with available ones)
+pcad1_models:
+  - PCAD1-l20
+  - PCAD1-l24
+  - PCAD1-l28
+  - PlantCAD  # Precomputed PCAD1-l32
+
+# Models that require sign flipping (PCAD1 models use negative log-likelihood)
+flip_sign_models:
+  - PCAD1-l20
+  - PCAD1-l24
+  - PCAD1-l28
+  - PCAD1-l32
+
+# Model colors for visualization (continuous blue progression by layer count)
+model_colors:
+  PCAD1-l20: "#6baed6"  # Light blue (20 layers)
+  PCAD1-l24: "#2171b5"  # Medium blue (24 layers)
+  PCAD1-l28: "#08519c"  # Medium-dark blue (28 layers)
+  PlantCAD: "#08306b"   # Dark blue (32 layers)
+
+# Subsample sizes (n) for stability analysis
+subsample_n:
+  - 5000
+  - 10000
+  - 20000
+  - 30000
+  - 100000
+
+# Number of random seeds for subsampling (for robustness)
+n_subsample_seeds: 100
+
+# Quantiles for mean AF analysis
+analysis_quantiles:
+  - 0.01
+  - 0.1
+
+# Quantiles for odds ratio analysis (top q fraction of variants)
+or_quantiles:
+  - 0.01
+  - 0.1
+
+# Chromosomes to use for analysis (validation set)
+analysis_chromosomes:
+  - "1"
+  - "3"
+  - "5"
+  - "7"
+  - "9"
+
+# Thresholds for rare vs common variant classification
+rare_threshold:
+  AC: 4  # Rare variants have AC = 4
+
+common_threshold:
+  AF: 0.20  # Common variants have AF > 20%
+
+# Metrics to compute
+metrics_to_compute:
+  - pearson_correlation
+  - pearson_correlation_logit
+  - pearson_correlation_log
+  - spearman_correlation
+  - auroc
+  - auprc
+  - mean_af_quantile
+  - odds_ratio
