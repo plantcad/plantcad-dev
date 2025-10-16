@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.16.5"
+__generated_with = "0.17.0"
 app = marimo.App(width="medium")
 
 
@@ -142,20 +142,22 @@ def _(fisher_exact, main_palette, model_renaming, pl, plot_dir, plt, sns):
 
         return g
 
-    return (barplot,)
+    return barplot, get_odds_ratio
 
 
 @app.cell
 def _(np):
     models = [
         "PlantCAD",
-        "PCAD1-l20",
-        "PCAD1-l24",
-        "PCAD1-l28",
+        # "PCAD1-l20",
+        # "PCAD1-l24",
+        # "PCAD1-l28",
         "phastCons",
         "phyloP",
         "MSA_empirical_LLR",
         "GPN-Star-v1",
+        "GPN-Star-v2",
+        "GPN-Star-v3",
     ]
 
     flip_sign_models = [
@@ -164,11 +166,16 @@ def _(np):
         "PCAD1-l28",
         "PCAD1-l32",
         "GPN-Star-v1",
+        "GPN-Star-v2",
+        "GPN-Star-v3",
     ]
 
     model_renaming = {
         "PlantCAD": "PCAD1-l32",
         "MSA_empirical_LLR": "MSA-LLR",
+        "GPN-Star-v1": "GPN-Star (thresh=0.05)",
+        "GPN-Star-v2": "GPN-Star (thres=0.2)",
+        "GPN-Star-v3": "GPN-Star (thresh=0)",
     }
 
     main_palette = {model_renaming.get(m, m): f"C{i}" for i, m in enumerate(models)}
@@ -384,8 +391,8 @@ def _(V):
 
 
 @app.cell
-def _():
-    """
+def _(V, pl):
+    # """
     V5 = V.with_columns(
         pl.when(pl.col("AC") == 4)
         .then(True)
@@ -395,13 +402,15 @@ def _():
         .alias("label")
     ).drop_nulls(subset="label")
     V5["label"].value_counts()
-    """
-    return
+    # """
+    return (V5,)
 
 
 @app.cell
-def _():
-    """
+def _(V5, consequences, get_odds_ratio, models, pl, tqdm):
+    # """
+    ns = [30, 90]
+
     res2 = []
     for c in tqdm(consequences):
         V_c = V5 if c == "all" else V5.filter(consequence=c)
@@ -418,13 +427,13 @@ def _():
             res2.append(odds_ratio)
     res2 = pl.concat(res2)
     res2
-    """
-    return
+    # """
+    return (res2,)
 
 
 @app.cell
-def _():
-    """
+def _(barplot, pl, res2):
+    # """
     barplot(
         res2.filter(
             pl.col("n") == 30,
@@ -435,13 +444,13 @@ def _():
         "Maize AC=4 vs. AF > 20%",
         y=1.2,
     )
-    """
+    # """
     return
 
 
 @app.cell
-def _():
-    """;
+def _(barplot, pl, res2):
+    # """;
     barplot(
         res2.filter(
             pl.col("n") == 30,
@@ -457,13 +466,13 @@ def _():
         height=2.3,
         y=0.95,
     )
-    """
+    # """
     return
 
 
 @app.cell
-def _():
-    """;
+def _(barplot, pl, res2):
+    # """;
     barplot(
         res2.filter(
             pl.col("n") == 90,
@@ -474,13 +483,13 @@ def _():
         "Maize AC=4 vs. AF > 20%",
         y=1.2,
     )
-    """
+    # """
     return
 
 
 @app.cell
-def _():
-    """;
+def _(barplot, pl, res2):
+    # """;
     barplot(
         res2.filter(
             pl.col("n") == 90,
@@ -492,11 +501,11 @@ def _():
         ncols=3,
         hspace=0.8,
         wspace=1.2,
-        width=3,
+        width=3.5,
         height=2.3,
         y=0.95,
     )
-    """
+    # """
     return
 
 
