@@ -1,0 +1,11 @@
+biofoundation[mamba] @ git+https://github.com/Open-Athena/biofoundation.git@9d3fc4f10e268ab7397e95d0f022531380bc22ae
+matplotlib
+numpy
+pandas
+polars
+pyarrow
+scipy
+seaborn
+snakemake
+torch
+tqdm

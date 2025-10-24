@@ -1,0 +1,37 @@
+configfile: "config/config.yaml"
+
+include: "rules/common.smk"
+include: "rules/models.smk"
+include: "rules/subsampling.smk"
+include: "rules/metrics.smk"
+
+
+rule all:
+    input:
+        # Metrics visualization
+        "results/metrics_plot.pdf",
+        # Ordering consistency
+        "results/ordering_consistency_plot.pdf",
+
+
+rule download_dataset:
+    output:
+        "results/variants.parquet",
+    shell:
+        "wget -O {output} {config[dataset_path]}"
+
+
+rule add_is_repeat:
+    input:
+        "results/variants.parquet",
+        "results/genome.fa.gz",
+    output:
+        "results/variants.annotated.parquet",
+    run:
+        V = pl.read_parquet(input[0])
+        genome = Genome(input[1])
+        V = V.with_columns(is_repeat=np.array([
+            genome(v["chrom"], v["pos"]-1, v["pos"]).islower()
+            for v in tqdm(V.iter_rows(named=True), total=len(V))
+        ]))
+        V.write_parquet(output[0])
