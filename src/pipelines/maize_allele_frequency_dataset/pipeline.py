@@ -3,13 +3,14 @@
 import logging
 import multiprocessing
 import os
+import shutil
 import subprocess
 import urllib.request
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Iterable, cast
 
-import docker.errors
+import docker
 import polars as pl
 from jinja2 import Template
 from biofoundation.data import Genome
@@ -117,7 +118,6 @@ def ensembl_vep_annotation(config: EnsemblVEPAnnotationConfig) -> None:
 
     logger.info("Running Ensembl VEP...")
     vep_output_path = output_path / "variants.ensembl_vep.output.tsv.gz"
-    vep_summary_path = output_path / "variants.ensembl_vep.output.tsv.gz_summary.html"
 
     client = docker.from_env()
 
@@ -125,6 +125,9 @@ def ensembl_vep_annotation(config: EnsemblVEPAnnotationConfig) -> None:
         str(output_path): {"bind": "/data", "mode": "rw"},
         str(cache_dir): {"bind": "/cache", "mode": "ro"},
     }
+
+    # Run container as current user to avoid permission issues
+    user = f"{os.getuid()}:{os.getgid()}"
 
     command = [
         "vep",
@@ -136,7 +139,7 @@ def ensembl_vep_annotation(config: EnsemblVEPAnnotationConfig) -> None:
         str(multiprocessing.cpu_count()),
         "--cache",
         "--dir_cache",
-        f"/cache/{cache_dir.name}",
+        "/cache",
         "--format",
         "ensembl",
         "--species",
@@ -150,39 +153,29 @@ def ensembl_vep_annotation(config: EnsemblVEPAnnotationConfig) -> None:
         "--offline",
         "--cache_version",
         str(config.cache_version),
+        "--no_stats",
     ]
 
     logger.info(f"Running VEP with command: {' '.join(command)}")
-
-    try:
-        client.containers.run(
-            config.docker_image,
-            command=command,
-            volumes=volumes,
-            remove=True,
-            detach=False,
-            stdout=True,
-            stderr=True,
-        )
-        logger.info("VEP completed successfully")
-    except docker.errors.ContainerError as e:
-        logger.error(f"VEP container failed: {e}")
-        logger.error(f"Container logs: {e.stderr.decode()}")
-        raise
+    client.containers.run(
+        config.docker_image,
+        command=command,
+        volumes=volumes,
+        user=user,
+        remove=True,
+    )
+    logger.info("VEP completed successfully")
 
     logger.info("Processing VEP output...")
     V = pl.read_parquet(variants_path)
 
-    V2 = (
-        pl.read_csv(
-            vep_output_path,
-            separator="\t",
-            has_header=False,
-            comment_prefix="#",
-            new_columns=[f"col_{i}" for i in range(20)],  # Generous column count
-        )
-        .select(["col_0", "col_6"])
-        .rename({"col_0": "variant", "col_6": "consequence"})
+    V2 = pl.read_csv(
+        vep_output_path,
+        separator="\t",
+        has_header=False,
+        comment_prefix="#",
+        columns=[0, 6],
+        new_columns=["variant", "consequence"],
     )
 
     V2 = V2.with_columns(
@@ -190,9 +183,9 @@ def ensembl_vep_annotation(config: EnsemblVEPAnnotationConfig) -> None:
         pos=pl.col("variant").str.split("_").list.get(1).cast(pl.Int64),
         ref=pl.col("variant").str.split("_").list.get(2).str.split("/").list.get(0),
         alt=pl.col("variant").str.split("_").list.get(2).str.split("/").list.get(1),
-    ).select(["chrom", "pos", "ref", "alt", "consequence"])
+    ).drop("variant")
 
-    V = V.join(V2, on=COORDINATES, how="left")
+    V = V.join(V2, on=COORDINATES, how="left", maintain_order="left")
 
     annotated_path = output_path / ANNOTATED_VARIANTS_FILENAME
     V.write_parquet(annotated_path)
@@ -202,9 +195,10 @@ def ensembl_vep_annotation(config: EnsemblVEPAnnotationConfig) -> None:
     logger.info(f"Deleted {vep_input_path}")
     vep_output_path.unlink()
     logger.info(f"Deleted {vep_output_path}")
-    if vep_summary_path.exists():
-        vep_summary_path.unlink()
-        logger.info(f"Deleted {vep_summary_path}")
+
+    logger.info("Cleaning up VEP cache...")
+    shutil.rmtree(cache_dir)
+    logger.info(f"Deleted cache directory {cache_dir}")
 
 
 def group_consequences(config: GroupConsequencesConfig) -> None:
@@ -470,7 +464,10 @@ def main():
 
     if cfg.executor.prefix is None:
         raise ValueError("Executor prefix must be set")
-    initialize_hf_path(cfg.executor.prefix)
+    # Only initialize HF path if the prefix is an HF path
+    prefix_path = UPath(cfg.executor.prefix)
+    if prefix_path.protocol == "hf":
+        initialize_hf_path(cfg.executor.prefix)
 
     pipeline = MaizeAlleleFrequencyDatasetPipeline(cfg)
     step = pipeline.last_step()
