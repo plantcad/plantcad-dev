@@ -50,11 +50,14 @@ class CreateAndPublishDatasetConfig(BaseStepConfig):
     max_n: dict[str, int] = Field(
         description="Maximum number of variants per sample size"
     )
-    include: list[str] = Field(description="List of consequence types to include")
-    groups: dict[str, list[str]] = Field(description="Consequence grouping rules")
-    default_config: str = Field(description="Default configuration name")
+    subsample_consequences: list[str] = Field(
+        description="List of consequence types to use for subsampled configurations"
+    )
+    default_dataset_config: str = Field(
+        description="Default dataset configuration name"
+    )
     output_hf_path: str = Field(description="HuggingFace output path")
-    seed: int = Field(default=42, description="Random seed for subsampling")
+    subsample_seed: int = Field(default=42, description="Random seed for subsampling")
 
 
 @dataclass

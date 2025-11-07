@@ -31,7 +31,7 @@ create_and_publish_dataset:
   max_n:
     "10k": 10000
     "20k": 20000
-  include:
+  subsample_consequences:
     - intergenic_variant
     - intron_variant
     - upstream_gene_variant
@@ -43,21 +43,9 @@ create_and_publish_dataset:
     - grouped_splice
     - non_coding_transcript_exon_variant
     - grouped_start_stop
-  groups:
-    grouped_splice:
-      - splice_polypyrimidine_tract_variant
-      - splice_region_variant
-      - splice_donor_region_variant
-      - splice_donor_variant
-      - splice_donor_5th_base_variant
-      - splice_acceptor_variant
-    grouped_start_stop:
-      - stop_gained
-      - stop_lost
-      - start_lost
-  default_config: "10k_all_consequences"
+  default_dataset_config: "10k_balanced"
   output_hf_path: plantcad/maize-allele-frequency-test
-  seed: 42
+  subsample_seed: 42
 
 executor:
   prefix: /tmp/maize_dataset_test

@@ -5,11 +5,11 @@ import multiprocessing
 import numpy as np
 import os
 import shutil
-import subprocess
 import urllib.request
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+import subprocess
+from typing import Any, Callable
 
 import docker
 import polars as pl
@@ -18,6 +18,7 @@ from biofoundation.data import Genome
 from upath import UPath
 from thalas.execution import ExecutorStep, output_path_of, this_output_path
 
+from huggingface_hub import HfApi
 from src.pipelines.maize_allele_frequency_dataset.config import (
     MaizeAlleleFrequencyDatasetConfig,
     ProcessVariantsConfig,
@@ -246,6 +247,113 @@ def add_genome_repeats(config: AddGenomeRepeatsConfig) -> None:
     logger.info(f"Deleted {genome_path}")
 
 
+def _create_full_subset(V: pl.DataFrame) -> pl.DataFrame:
+    """Create full subset (no subsampling).
+
+    Parameters
+    ----------
+    V
+        Pre-filtered dataframe for the split
+
+    Returns
+    -------
+    pl.DataFrame
+        The dataframe unchanged
+    """
+    return V
+
+
+def _create_balanced_subset(
+    V: pl.DataFrame,
+    max_n: int,
+    subsample_consequences: list[str],
+    subsample_seed: int,
+) -> pl.DataFrame:
+    """Create balanced subset by sampling equally across consequence types.
+
+    Parameters
+    ----------
+    V
+        Pre-filtered dataframe for the split
+    max_n
+        Maximum total number of variants to sample
+    subsample_consequences
+        List of consequence types to include in balanced sample
+    subsample_seed
+        Random seed for sampling
+
+    Returns
+    -------
+    pl.DataFrame
+        Balanced subsampled dataframe sorted by coordinates
+    """
+    max_n_per_consequence = max_n // len(subsample_consequences)
+    V = V.filter(~pl.col("is_repeat"))
+    res = []
+    for consequence in subsample_consequences:
+        V_consequence = V.filter(pl.col("consequence") == consequence)
+        n = min(max_n_per_consequence, len(V_consequence))
+        res.append(V_consequence.sample(n=n, shuffle=True, seed=subsample_seed))
+    return pl.concat(res).sort(COORDINATES)
+
+
+def _create_consequence_subset(
+    V: pl.DataFrame,
+    consequence: str,
+    max_n: int,
+    subsample_seed: int,
+) -> pl.DataFrame:
+    """Create subsampled subset for a specific consequence type.
+
+    Parameters
+    ----------
+    V
+        Pre-filtered dataframe for the split
+    consequence
+        Specific consequence type to filter by
+    max_n
+        Maximum number of variants to sample
+    subsample_seed
+        Random seed for sampling
+
+    Returns
+    -------
+    pl.DataFrame
+        Subsampled dataframe filtered by consequence type, sorted by coordinates
+    """
+    V = V.filter(~pl.col("is_repeat"), pl.col("consequence") == consequence)
+    n = min(max_n, len(V))
+    return V.sample(n=n, shuffle=True, seed=subsample_seed).sort(COORDINATES)
+
+
+def _write_subset(
+    dataset_output_path: UPath,
+    dataset_config: str,
+    split: str,
+    subset_fn: Callable[..., pl.DataFrame],
+    *args: Any,
+) -> None:
+    """Create a subset and write it to a parquet file.
+
+    Parameters
+    ----------
+    dataset_output_path
+        Base output path for datasets
+    dataset_config
+        Name of the dataset configuration (e.g., "full", "10k_balanced")
+    split
+        Name of the split (e.g., "validation", "test")
+    subset_fn
+        Function to create the subset (e.g., _create_full_subset, _create_balanced_subset)
+    *args
+        Arguments to pass to subset_fn
+    """
+    split_data = subset_fn(*args)
+    split_path = dataset_output_path / dataset_config / f"{split}.parquet"
+    split_path.parent.mkdir(parents=True, exist_ok=True)
+    split_data.write_parquet(split_path)
+
+
 def create_and_publish_dataset(config: CreateAndPublishDatasetConfig) -> None:
     """Create dataset configs, generate README, and upload to HuggingFace."""
     logger.info(f"Starting create_and_publish_dataset step; {config=}")
@@ -258,73 +366,73 @@ def create_and_publish_dataset(config: CreateAndPublishDatasetConfig) -> None:
     V = pl.read_parquet(repeat_path)
     splits = list(config.split_chroms.keys())
 
-    configs = ["full"] + [
-        f"{max_n}_{consequence}"
-        for max_n in config.max_n.keys()
-        for consequence in (config.include + ["all_consequences"])
-    ]
+    # Pre-compute split dataframes once to avoid redundant filtering
+    logger.info("Pre-filtering variants by split chromosomes...")
+    split_dataframes = {
+        split: V.filter(pl.col("chrom").is_in(config.split_chroms[split]))
+        for split in splits
+    }
 
-    logger.info("Creating full dataset splits...")
+    # Build dataset_configs list for README generation
+    dataset_configs = ["full"]
+    for max_n_key in config.max_n.keys():
+        dataset_configs.append(f"{max_n_key}_balanced")
+        for consequence in config.subsample_consequences:
+            dataset_configs.append(f"{max_n_key}_{consequence}")
+
+    logger.info("Creating dataset configurations...")
     for split in splits:
-        split_data = V.filter(pl.col("chrom").is_in(config.split_chroms[split]))
-        split_path = dataset_output_path / "full" / f"{split}.parquet"
-        split_path.parent.mkdir(parents=True, exist_ok=True)
-        split_data.write_parquet(split_path)
+        # Create "full" dataset_config
+        _write_subset(
+            dataset_output_path,
+            "full",
+            split,
+            _create_full_subset,
+            split_dataframes[split],
+        )
 
-    logger.info("Creating subsampled configurations...")
-    for config_name in configs[1:]:
-        parts = config_name.split("_", 1)
-        max_n_key = parts[0]
-        consequence_type = parts[1]
+        # Create subsampled dataset_configs
+        for max_n_key in config.max_n.keys():
+            max_n = config.max_n[max_n_key]
 
-        max_n = config.max_n[max_n_key]
+            # Create "balanced" dataset_config
+            _write_subset(
+                dataset_output_path,
+                f"{max_n_key}_balanced",
+                split,
+                _create_balanced_subset,
+                split_dataframes[split],
+                max_n,
+                config.subsample_consequences,
+                config.subsample_seed,
+            )
 
-        config_dir = dataset_output_path / config_name
-        config_dir.mkdir(parents=True, exist_ok=True)
-
-        for split in splits:
-            split_data = V.filter(pl.col("chrom").is_in(config.split_chroms[split]))
-
-            if consequence_type == "all_consequences":
-                max_n_per_consequence = max_n // len(config.include)
-                res = []
-                for consequence in config.include:
-                    V_consequence = split_data.filter(
-                        pl.col("consequence") == consequence
-                    )
-                    n = min(max_n_per_consequence, len(V_consequence))
-                    if n > 0:
-                        V_consequence = V_consequence.sample(n=n, seed=config.seed)
-                        res.append(V_consequence)
-                if res:
-                    split_data = pl.concat(res).sort(COORDINATES)
-            else:
-                split_data = split_data.filter(
-                    ~pl.col("is_repeat"), pl.col("consequence") == consequence_type
-                ).drop("is_repeat")
-                n = min(max_n, len(split_data))
-                if n > 0:
-                    split_data = split_data.sample(n=n, seed=config.seed).sort(
-                        COORDINATES
-                    )
-
-            if len(split_data) > 0:
-                split_path = config_dir / f"{split}.parquet"
-                split_data.write_parquet(split_path)
+            # Create consequence dataset_configs
+            for consequence in config.subsample_consequences:
+                _write_subset(
+                    dataset_output_path,
+                    f"{max_n_key}_{consequence}",
+                    split,
+                    _create_consequence_subset,
+                    split_dataframes[split],
+                    consequence,
+                    max_n,
+                    config.subsample_seed,
+                )
 
     logger.info("Creating README...")
     readme_path = dataset_output_path / "README.md"
 
     frontmatter_configs = []
-    for config_name in configs:
+    for dataset_config in dataset_configs:
         config_entry: dict[str, Any] = {
-            "config_name": config_name,
+            "config_name": dataset_config,
             "data_files": [
-                {"split": split, "path": f"{config_name}/{split}.parquet"}
+                {"split": split, "path": f"{dataset_config}/{split}.parquet"}
                 for split in splits
             ],
         }
-        if config_name == config.default_config:
+        if dataset_config == config.default_dataset_config:
             config_entry["default"] = True
         frontmatter_configs.append(config_entry)
 
@@ -338,26 +446,20 @@ def create_and_publish_dataset(config: CreateAndPublishDatasetConfig) -> None:
         tags=["biology", "genomics", "dna", "variant-effect-prediction"],
         configs=frontmatter_configs,
         split_chroms=config.split_chroms,
-        num_consequences=len(config.include),
+        num_consequences=len(config.subsample_consequences),
         max_n_keys=list(config.max_n.keys()),
-        consequences=config.include,
-        consequence_groups=config.groups,
+        consequences=config.subsample_consequences,
     )
 
     with open(readme_path, "w") as f:
         f.write(rendered)
 
     logger.info("Uploading to HuggingFace...")
-    subprocess.run(
-        [
-            "hf",
-            "upload-large-folder",
-            config.output_hf_path,
-            "--repo-type",
-            "dataset",
-            str(dataset_output_path),
-        ],
-        check=True,
+    api = HfApi()
+    api.upload_large_folder(
+        repo_id=config.output_hf_path,
+        repo_type="dataset",
+        folder_path=str(dataset_output_path),
     )
 
 
