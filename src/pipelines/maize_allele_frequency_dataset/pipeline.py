@@ -205,13 +205,9 @@ def group_consequences(config: GroupConsequencesConfig) -> None:
     """Group consequences according to configuration."""
     logger.info(f"Starting group_consequences step; {config=}")
 
-    annotated_path = UPath(config.input_path) / ANNOTATED_VARIANTS_FILENAME
-    output_path = UPath(config.output_path)
-
-    V = pl.read_parquet(annotated_path)
-
-    V = V.with_columns(original_consequence=pl.col("consequence"))
-
+    V = pl.read_parquet(
+        UPath(config.input_path) / ANNOTATED_VARIANTS_FILENAME
+    ).with_columns(original_consequence=pl.col("consequence"))
     for new_c, old_cs in config.groups.items():
         V = V.with_columns(
             pl.when(pl.col("consequence").is_in(old_cs))
@@ -219,9 +215,7 @@ def group_consequences(config: GroupConsequencesConfig) -> None:
             .otherwise(pl.col("consequence"))
             .alias("consequence")
         )
-
-    grouped_path = output_path / GROUPED_VARIANTS_FILENAME
-    V.write_parquet(grouped_path)
+    V.write_parquet(UPath(config.output_path) / GROUPED_VARIANTS_FILENAME)
 
 
 def add_genome_repeats(config: AddGenomeRepeatsConfig) -> None:

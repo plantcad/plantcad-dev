@@ -33,7 +33,6 @@ class GroupConsequencesConfig(BaseStepConfig):
     """Configuration for grouping consequences."""
 
     groups: dict[str, list[str]] = Field(description="Consequence grouping rules")
-    include: list[str] = Field(description="List of consequence types to include")
 
 
 @dataclass(kw_only=True)

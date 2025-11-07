@@ -20,18 +20,6 @@ group_consequences:
       - stop_gained
       - stop_lost
       - start_lost
-  include:
-    - intergenic_variant
-    - intron_variant
-    - upstream_gene_variant
-    - downstream_gene_variant
-    - 3_prime_UTR_variant
-    - synonymous_variant
-    - missense_variant
-    - 5_prime_UTR_variant
-    - grouped_splice
-    - non_coding_transcript_exon_variant
-    - grouped_start_stop
 
 add_genome_repeats:
   genome_url: https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-62/fasta/zea_mays/dna/Zea_mays.Zm-B73-REFERENCE-NAM-5.0.dna_sm.toplevel.fa.gz
