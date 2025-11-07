@@ -24,6 +24,10 @@ dependencies = [
   "xarray==2025.8.0",
   "netcdf4==1.7.2",
   "dask[array]>=2025.7.0",
+  "polars==1.34.0",
+  "docker==7.1.0",
+  "jinja2>=3.1.0",
+  "biofoundation",
 ]
 
 [project.optional-dependencies]
@@ -61,6 +65,7 @@ causal-conv1d = [
 ]
 skypilot = { git = "https://github.com/Open-Athena/skypilot", branch = "fix-lambda-launch" }
 thalas = { git = "https://github.com/Open-Athena/thalas", branch = "executor-extraction" }
+biofoundation = { git = "https://github.com/Open-Athena/biofoundation.git", rev = "56bd9c37daaaf7ced26e3f4b2a63a48890d7ff61" }
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
@@ -101,6 +106,7 @@ replace-imports-with-any = [
   "ray.*",
   "submitit.*",
   "pandas.*",
+  "polars.*",
 ]
 
 

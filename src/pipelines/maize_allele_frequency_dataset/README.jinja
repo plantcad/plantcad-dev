@@ -1,0 +1,57 @@
+---
+{% filter indent(width=0) %}
+license: {{ license }}
+tags: {{ tags | tojson }}
+configs:
+{%- for config in configs %}
+  - config_name: {{ config.config_name }}
+{%- if config.default %}
+    default: true
+{%- endif %}
+    data_files:
+{%- for file in config.data_files %}
+      - split: {{ file.split }}
+        path: {{ file.path }}
+{%- endfor %}
+{%- endfor %}
+{% endfilter %}
+---
+
+# Maize Allele Frequency Dataset
+
+Source data described in [PlantCaduceus paper](https://www.pnas.org/doi/10.1073/pnas.2421738122). Raw data available at [plantcad/maize-allele-frequency-raw-data](https://huggingface.co/datasets/plantcad/maize-allele-frequency-raw-data/).
+
+## Splits
+{%- for split, chroms in split_chroms.items() %}
+
+- **{{ split }}**: Chromosomes {{ chroms | join(', ') }}
+{%- endfor %}
+
+## Configurations
+
+### full
+
+Complete dataset with all variants.
+
+### Subsampled Configurations
+
+Subsampled datasets (excluding repeats) with max N variants, filtered by consequence type:
+- `{max_n}_balanced`: Balanced sample across all consequence types (~N/{{ num_consequences }} per consequence)
+- `{max_n}_{consequence}`: Up to N variants of specific consequence type
+
+Available sample sizes: {{ max_n_keys | join(', ') }}
+
+Available consequence types: {{ consequences | join(', ') }}
+
+## Data Schema
+
+- `chrom`: Chromosome
+- `pos`: Position
+- `ref`: Reference allele
+- `alt`: Alternate allele
+- `AC`: Allele count
+- `AN`: Allele number
+- `AF`: Allele frequency
+- `MAF`: Minor allele frequency
+- `consequence`: Consequence type (after grouping)
+- `original_consequence`: Original Ensembl VEP consequence (before grouping)
