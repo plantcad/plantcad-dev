@@ -2,19 +2,19 @@
 
 import logging
 import multiprocessing
+import numpy as np
 import os
 import shutil
 import subprocess
 import urllib.request
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Iterable, cast
+from typing import Any
 
 import docker
 import polars as pl
 from jinja2 import Template
 from biofoundation.data import Genome
-from tqdm import tqdm
 from upath import UPath
 from thalas.execution import ExecutorStep, output_path_of, this_output_path
 
@@ -222,7 +222,6 @@ def add_genome_repeats(config: AddGenomeRepeatsConfig) -> None:
     """Download genome and add repeat annotations."""
     logger.info(f"Starting add_genome_repeats step; {config=}")
 
-    grouped_path = UPath(config.input_path) / GROUPED_VARIANTS_FILENAME
     output_path = UPath(config.output_path)
 
     logger.info("Downloading genome...")
@@ -230,19 +229,21 @@ def add_genome_repeats(config: AddGenomeRepeatsConfig) -> None:
     urllib.request.urlretrieve(config.genome_url, genome_path)
 
     logger.info("Adding repeat annotations...")
-    V = pl.read_parquet(grouped_path)
+    V = pl.read_parquet(UPath(config.input_path) / GROUPED_VARIANTS_FILENAME)
     genome = Genome(genome_path)
+    V = V.with_columns(
+        is_repeat=np.array(
+            [
+                genome(v["chrom"], v["pos"] - 1, v["pos"]).islower()
+                for v in V.iter_rows(named=True)
+            ]
+        )
+    )
+    V.write_parquet(output_path / REPEAT_ANNOTATED_FILENAME)
 
-    is_repeat = []
-    iter_rows: Iterable[dict[str, Any]] = V.iter_rows(named=True)
-    for variant in cast(Iterable[dict[str, Any]], tqdm(iter_rows, total=len(V))):
-        seq = genome(variant["chrom"], variant["pos"] - 1, variant["pos"])
-        is_repeat.append(seq.islower())
-
-    V = V.with_columns(is_repeat=pl.Series(is_repeat))
-
-    repeat_path = output_path / REPEAT_ANNOTATED_FILENAME
-    V.write_parquet(repeat_path)
+    logger.info("Cleaning up genome file...")
+    genome_path.unlink()
+    logger.info(f"Deleted {genome_path}")
 
 
 def create_and_publish_dataset(config: CreateAndPublishDatasetConfig) -> None:
