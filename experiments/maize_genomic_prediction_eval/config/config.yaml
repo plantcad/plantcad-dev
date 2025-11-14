@@ -1,2 +1,10 @@
 # HuggingFace dataset repository ID for input data
 input_data_hf_repo_id: "plantcad/_dev_maize_genomic_prediction_eval"
+
+chain_file_4_to_5_url: https://de.cyverse.org/anon-files/iplant/home/maizegdb/maizegdb/B73v5_JBROWSE_AND_ANALYSES/chain_files/Chain_files_v4_v5/B73_RefGen_v4_to_Zm-B73-REFERENCE-NAM-5.0.chain
+
+genome_url: https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-62/fasta/zea_mays/dna/Zea_mays.Zm-B73-REFERENCE-NAM-5.0.dna_sm.toplevel.fa.gz
+
+conservation_models:
+  phastCons: https://huggingface.co/datasets/plantcad/andropogoneae_msa/resolve/main/phastCons.bw
+  phyloP: https://huggingface.co/datasets/plantcad/andropogoneae_msa/resolve/main/phyloP.bw

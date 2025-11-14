@@ -9,3 +9,4 @@ dependencies:
   - r-matrix
   - r-optparse
   - r-arrow
+  - bioconductor-snprelate

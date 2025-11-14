@@ -2,6 +2,8 @@ configfile: "config/config.yaml"
 
 include: "rules/common.smk"
 include: "rules/reml.smk"
+include: "rules/model.smk"
+
 
 rule all:
     input:

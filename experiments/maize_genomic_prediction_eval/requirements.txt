@@ -1,3 +1,7 @@
+biofoundation[mamba] @ git+https://github.com/Open-Athena/biofoundation.git@3c0d45edeeafd2ffac22c387b64138cf74fefba4
+biopython
 huggingface_hub
 polars
+pyBigWig
 snakemake
+liftover
