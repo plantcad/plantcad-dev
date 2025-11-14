@@ -1,0 +1,2 @@
+# HuggingFace dataset repository ID for input data
+input_data_hf_repo_id: "plantcad/_dev_maize_genomic_prediction_eval"

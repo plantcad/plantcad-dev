@@ -1,0 +1,11 @@
+channels:
+  - conda-forge
+  - bioconda
+  - r
+dependencies:
+  - r-base>=4.0
+  - r-data.table
+  - r-qgg
+  - r-matrix
+  - r-optparse
+  - r-arrow

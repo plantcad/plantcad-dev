@@ -1,0 +1,8 @@
+configfile: "config/config.yaml"
+
+include: "rules/common.smk"
+include: "rules/reml.smk"
+
+rule all:
+    input:
+        "results/CV_baseline.parquet"
