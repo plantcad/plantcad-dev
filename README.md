@@ -312,11 +312,32 @@ find ~/.cache/uv/ | grep causal | grep whl
 
 ## Storage
 
-Shared storage is currently supported via Hugging Face. See the [Hugging Face Filesystem API](https://huggingface.co/docs/huggingface_hub/main/en/package_reference/hf_file_system) docs for more details.
+Shared storage is currently supported via either Hugging Face or AWS S3. See the [Hugging Face Filesystem API](https://huggingface.co/docs/huggingface_hub/main/en/package_reference/hf_file_system) and [S3 Filesystem API](https://s3fs.readthedocs.io/en/latest/index.html) docs for more details.
 
-### Reading data
+Unless there is a good reason otherwise, all pipeline writes and reads of datasets with more common formats like Xarray or Pandas should use the methods in [src.io.api.py](src/io/api.py).  These dispatch automatically to the appropriate storage backend as well as use local file caching and retries for better throughput and performance (at the expense of flexibility).  For example:
 
-The simplest way to read remote data is through existing fsspec-compatible libraries (pandas, pyarrow, dask, xarray, etc.) or via [UPath](https://github.com/fsspec/universal_pathlib), an extension to `pathlib.Path` supporting remote file systems.
+```python
+# Write and read a pandas DataFrame to/from Hugging Face
+import pandas as pd
+from src.io.api import write_pandas_parquet, read_pandas_parquet
+df = pd.DataFrame({"a": [1, 2, 3]})
+write_pandas_parquet(df, "hf://datasets/plantcad/test-dataset")
+df = read_pandas_parquet("hf://datasets/plantcad/test-dataset")
+
+# Write and read an Xarray Dataset to/from S3
+from src.io.api import write_xarray_netcdf, read_xarray_netcdf
+ds = xr.Dataset({"a": [1, 2, 3]})
+write_xarray_netcdf(ds, "s3://oa-plantcad-dev/tmp/test-dataset")
+ds = read_xarray_netcdf("s3://oa-plantcad-dev/tmp/test-dataset")
+```
+
+The backend-specific examples that follow demonstrate how to manipulate data for more ad-hoc, development or analysis purposes.
+
+### Hugging Face
+
+#### Reading data
+
+The simplest ad-hoc way to read HF data is through existing fsspec-compatible libraries (pandas, pyarrow, dask, xarray, etc.) or via [UPath](https://github.com/fsspec/universal_pathlib), an extension to `pathlib.Path` supporting remote file systems.
 
 Here are a few examples:
 
@@ -361,7 +382,7 @@ hf_repo(name="training_dataset", internal=True).to_url()
 # 'hf://datasets/plantcad/_dev_training_dataset'
 ```
 
-### Writing data
+#### Writing data
 
 Writing data can be done through an fsspec filesystem or via UPath.  This will require authentication, so use `huggingface-cli login` or set `HUGGING_FACE_HUB_TOKEN` in the environment to do that.  Examples:
 
@@ -387,7 +408,7 @@ with fs.open(path.join("data.txt").to_url(), "w") as f:
     f.write(content)
 ```
 
-### Deleting data
+#### Deleting data
 
 When running Thalas pipelines, it is common to need to clear the paths used for a pipeline during development, or to delete data for a specific step.  Here are some examples:
 
@@ -399,9 +420,11 @@ hf repo-files delete --repo-type dataset plantcad/_dev_pc2_eval '*'
 hf repo-files delete --repo-type dataset plantcad/_dev_pc2_eval evolutionary_downsample_dataset-be132f
 ```
 
-## AWS S3
+### AWS S3
 
-Commands to use S3 on remote hosts:
+#### Setup
+
+These commands demonstrate how to configure AWS S3 access on remote dev VMs.  For more details, see https://github.com/plantcad/plantcad-dev/pull/30.
 
 ```
 # On local host
@@ -418,7 +441,26 @@ sky launch -c pc-dev configs/skypilot/cluster.sky.yaml --num-nodes 1 \
   --env AWS_SESSION_TOKEN
 ```
 
-TODO: configure service accounts
+TODO: Configure service accounts instead of using personal accounts, or rely on Github Actions to run S3-enabled pipelines for plantcad users that don't have direct S3 access (i.e. use whatever service accounts https://github.com/Open-Athena/ec2-gha uses).  See: https://github.com/plantcad/plantcad-dev/issues/31.
+
+#### CLI
+
+Here are some useful S3 CLI commands for viewing data, fetching files and deleting pipeline outputs:
+
+```bash
+# List all objects under a given pipeline prefix
+aws s3 ls --recursive s3://oa-plantcad-dev/pipelines/pc2_eval_20251114_r1
+
+# Download and view a single object/file
+aws s3 cp s3://oa-plantcad-dev/pipelines/pc2_eval_20251114_r1/acceptor_core_noncore_classification__test_maize__plantcad2-small-l24-d0768-49327e/step.json . && cat step.json
+
+# Clear data for a pipeline in order to re-run it
+aws s3 rm --recursive s3://oa-plantcad-dev/pipelines/pc2_eval_20251114_r1
+```
+
+#### Python API
+
+Ad-hoc writes and reads to S3 from Python can be done the same way as the `UPath` examples for Hugging Face above.  If `UPath` is not sufficient for some use-case, the [s3fs](https://s3fs.readthedocs.io/en/latest/index.html) library can also be used directly.
 
 ## SkyPilot
 
