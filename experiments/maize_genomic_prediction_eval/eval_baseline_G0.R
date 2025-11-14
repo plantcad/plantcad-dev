@@ -73,7 +73,7 @@ for (validation in c("CP", "LOFO")) {
                       x = rownames(Y))
   rownames(Y) <- gsub(pattern = 'Ames_H.', replacement = '',
                       x = rownames(Y))
-  
+
   VS <- VS_list[[validation]]
 
   for (trait in colnames(Y)) {
@@ -83,7 +83,7 @@ for (validation in c("CP", "LOFO")) {
     X.obs <- X_base[obs, ]
     G.obs <- list(G0[obs, obs])
 
-    VS.obs <- lapply(VS, 
+    VS.obs <- lapply(VS,
                      function(cv_split) na.omit(match(cv_split, obs)))
 
     fit <- greml(y = y.obs,
@@ -115,4 +115,3 @@ for (validation in c("CP", "LOFO")) {
 }
 
 cat("Saved baseline CV to ", out_file, "\n", sep = "")
-
