@@ -17,13 +17,14 @@ dependencies = [
   "datasets==4.0.0",
   "tqdm==4.67.1",
   "pydantic==2.11.7",
-  "skypilot[lambda]>=0.10",
   "thalas==0.1.0",
   "ray[default,client]==2.45",
   "universal-pathlib==0.2.6",
   "xarray==2025.8.0",
   "netcdf4==1.7.2",
+  "skypilot[lambda]>=0.10",
   "dask[array]>=2025.7.0",
+  "s3fs>=2025.3.0",
 ]
 
 [project.optional-dependencies]

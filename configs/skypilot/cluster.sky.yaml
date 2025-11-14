@@ -3,6 +3,9 @@ envs:
   # SkyPilot will enforce the existence of any env vars with `null` values here
   HUGGING_FACE_HUB_TOKEN: null
   WANDB_API_KEY: ""
+  AWS_ACCESS_KEY_ID: ""
+  AWS_SECRET_ACCESS_KEY: ""
+  AWS_SESSION_TOKEN: ""
 
 workdir: .
 
@@ -46,7 +49,7 @@ setup: |
   > ~/.env # Clear first
 
   # Add tokens/secrets from client env
-  for var in HUGGING_FACE_HUB_TOKEN WANDB_API_KEY; do
+  for var in HUGGING_FACE_HUB_TOKEN WANDB_API_KEY AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN; do
     declare -n ref=$var
     if [ -n "$ref" ]; then
       echo "$var=$ref" >> ~/.env

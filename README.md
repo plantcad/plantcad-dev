@@ -399,6 +399,26 @@ hf repo-files delete --repo-type dataset plantcad/_dev_pc2_eval '*'
 hf repo-files delete --repo-type dataset plantcad/_dev_pc2_eval evolutionary_downsample_dataset-be132f
 ```
 
+## AWS S3
+
+Commands to use S3 on remote hosts:
+
+```
+# On local host
+# Install AWS CLI: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
+aws configure
+aws sso login --profile default
+aws configure export-credentials --profile default --format env | source /dev/stdin
+
+# Launch a cluster with AWS access
+sky launch -c pc-dev configs/skypilot/cluster.sky.yaml --num-nodes 1 \
+  --env HUGGING_FACE_HUB_TOKEN \
+  --env AWS_ACCESS_KEY_ID \
+  --env AWS_SECRET_ACCESS_KEY \
+  --env AWS_SESSION_TOKEN
+```
+
+TODO: configure service accounts
 
 ## SkyPilot
 
