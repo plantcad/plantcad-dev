@@ -63,7 +63,7 @@ def _merge_predictions(
     # Materialize chunked arrays (as dask) in memory
     predictions = predictions.compute()
     logger.info(
-        f"[task={config.task}, split={config.split}] Loaded predictions:\n{predictions}"
+        f"[task={config.task}, split={config.split}] Loaded predictions from {worker_dir}:\n{predictions}"
     )
 
     labels = load_task_data(config)
@@ -100,11 +100,15 @@ def _write_worker_results(
     to_list: bool = False,
 ) -> str:
     df = load_task_data(config, worker_id=worker_id, num_workers=num_workers)
+    logger.debug(f"[task={config.task}, split={config.split}] Loaded task data:\n{df}")
     example_idx, result = compute_fn(df, config)
     da = xr.DataArray(result, dims=dims)
     da = da.assign_coords({"sample": example_idx})
     worker_ds = da.to_dataset(name=result_column)
     filename = f"worker_{worker_id:05d}.nc"
+    logger.debug(
+        f"[task={config.task}, split={config.split}] Writing task result to {filename}:\n{worker_ds}"
+    )
     _write_netcdf(UPath(output_dir) / filename, worker_ds)
     return filename
 
