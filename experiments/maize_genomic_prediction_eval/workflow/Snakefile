@@ -1,10 +1,14 @@
 configfile: "config/config.yaml"
 
+all_models = config["eval_models"] + ["baseline"]
+
 include: "rules/common.smk"
 include: "rules/reml.smk"
 include: "rules/model.smk"
+include: "rules/plot.smk"
 
 
 rule all:
     input:
-        "results/CV_baseline.parquet"
+        "results/plots/r_metrics.png",
+        "results/plots/mse_metrics.png",

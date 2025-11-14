@@ -40,7 +40,7 @@ rule eval_baseline:
         nam_pheno="results/input_data/NAM_H/pheno.rds",
         ames_pheno="results/input_data/Ames_H/pheno.rds"
     output:
-        "results/CV_baseline.parquet"
+        "results/metrics/baseline.parquet"
     conda:
         "../envs/r-reml.yaml"
     threads:
@@ -50,5 +50,32 @@ rule eval_baseline:
         "--hybrids-dir results/input_data/hybrids "
         "--nam-dir results/input_data/NAM_H "
         "--ames-dir results/input_data/Ames_H "
+        "--output {output} "
+        "--n-threads {threads}"
+
+
+rule eval_score_model:
+    input:
+        scores_file="results/variant_scores/{model}.parquet",
+        g_file="results/input_data/hybrids/G.rds",
+        q_file="results/input_data/hybrids/Q.rds",
+        gds_file="results/input_data/hybrids/AGPv4_hybrids.gds",
+        nam_pheno="results/input_data/NAM_H/pheno.rds",
+        ames_pheno="results/input_data/Ames_H/pheno.rds"
+    output:
+        "results/metrics/{model}.parquet"
+    conda:
+        "../envs/r-reml.yaml"
+    threads:
+        workflow.cores
+    wildcard_constraints:
+        model = "|".join(config["eval_models"])
+    shell:
+        "Rscript workflow/scripts/eval_score_model.R "
+        "--hybrids-dir results/input_data/hybrids "
+        "--nam-dir results/input_data/NAM_H "
+        "--ames-dir results/input_data/Ames_H "
+        "--gds-file {input.gds_file} "
+        "--scores-file {input.scores_file} "
         "--output {output} "
         "--n-threads {threads}"

@@ -8,3 +8,11 @@ genome_url: https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-62/fasta/zea
 conservation_models:
   phastCons: https://huggingface.co/datasets/plantcad/andropogoneae_msa/resolve/main/phastCons.bw
   phyloP: https://huggingface.co/datasets/plantcad/andropogoneae_msa/resolve/main/phyloP.bw
+
+eval_models:
+  - quantile_binarized/phyloP/0.01
+  - quantile_binarized/phyloP/0.001
+  - quantile_binarized/phyloP/0.0001
+  - quantile_binarized/phastCons/0.01
+  - quantile_binarized/phastCons/0.001
+  - quantile_binarized/phastCons/0.0001

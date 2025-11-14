@@ -1,9 +1,11 @@
 from Bio.Seq import Seq
 from biofoundation.data import Genome
 from liftover import ChainFile
+import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 import pyBigWig
+import seaborn as sns
 
 
 CHROMS = [str(i) for i in range(1, 11)]

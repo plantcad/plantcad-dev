@@ -3,5 +3,6 @@ biopython
 huggingface_hub
 polars
 pyBigWig
+seaborn
 snakemake
 liftover
