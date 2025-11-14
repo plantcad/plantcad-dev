@@ -1,4 +1,5 @@
-name: plantcad2-evaluation
+# Generic plantcad-dev task configuration
+name: plantcad-dev-task
 
 # IMPORTANT: Do not set `num_nodes` for task configuration.
 # All nodes must be used to execute each task and the size of the cluster will vary,
@@ -9,11 +10,11 @@ name: plantcad2-evaluation
 # num_nodes: N
 
 envs:
-  # SkyPilot will enforce the existence of any env vars with `null` values here
-  HUGGING_FACE_HUB_TOKEN: null
   RAY_GCS_PORT: 6479
   RAY_DEDUP_LOGS: 1
-  ARGS: ""
+  TASK_MODULE: "src.pipelines.plantcad2.evaluation.pipeline"
+  TASK_CONFIG: "src/pipelines/plantcad2/evaluation/config.yaml"
+  TASK_ARGS: ""
 
 workdir: .
 
@@ -29,6 +30,9 @@ run: |
   # Log Ray environment variables
   echo "RAY_GCS_PORT: $RAY_GCS_PORT"
   echo "RAY_DEDUP_LOGS: $RAY_DEDUP_LOGS"
+
+  # Source tokens and other common settings
+  source ~/.env
 
   # Run on rank 0 only as defense against accidental multi-node task execution;
   # the first node chosen for a task by SkyPilot always has rank 0 (which may be a worker)
@@ -54,10 +58,7 @@ run: |
       RAY_DEDUP_LOGS="$RAY_DEDUP_LOGS" \
       RAY_ADDRESS="$RAY_GCS_ADDRESS" \
       HUGGING_FACE_HUB_TOKEN="$HUGGING_FACE_HUB_TOKEN" \
-      bash -c "source .venv/bin/activate && python -m src.pipelines.plantcad2.evaluation.pipeline \
-        --config_path src/pipelines/plantcad2/evaluation/configs/config.yaml \
-        --tasks.evolutionary_constraint.generate_logits.simulation_mode false \
-        --executor.prefix hf://datasets/plantcad/_dev_pc2_eval \
-        --executor.force_run_failed true \
-        ${ARGS}"
+      bash -c "source .venv/bin/activate && python -m ${TASK_MODULE} \
+        --config_path ${TASK_CONFIG} \
+        ${TASK_ARGS}"
   fi

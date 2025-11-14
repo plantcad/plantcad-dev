@@ -1,184 +1,165 @@
-"""Configuration models for PlantCAD2 evaluation pipeline."""
+from __future__ import annotations
+
+from enum import StrEnum
 
 from pydantic import Field, model_validator
 from pydantic.dataclasses import dataclass
-from typing_extensions import Self
 from thalas.execution import ExecutorMainConfig
+from typing_extensions import Self
 
 from src.utils.pipeline_utils import BaseStepConfig
 
 
-@dataclass
-class DownsampleDatasetConfig(BaseStepConfig):
-    """Configuration for dataset downsampling step."""
+class TaskType(StrEnum):
+    """Task evaluation type."""
 
-    dataset_split: str = Field(
-        default="valid",
-        description="The name of the input dataset, either 'valid' or 'test'",
-    )
-    dataset_subdir: str = Field(
-        default="Evolutionary_constraint",
-        description="Subdirectory within the HF dataset repo for this task",
-    )
-    sample_size: int | None = Field(
-        default=None,
-        description="Number of samples to downsample to (None for full dataset)",
-        ge=0,
-    )
-    dataset_path: str = Field(
-        default="kuleshov-group/cross-species-single-nucleotide-annotation",
-        description="HuggingFace repository ID for the dataset",
-    )
+    zero_shot = "zero_shot"
+    fine_tune = "fine_tune"
 
 
-@dataclass
-class GenerateLogitsConfig(BaseStepConfig):
-    """Configuration for logits generation step."""
+# Use kw_only to support required and optional fields in any order
+@dataclass(kw_only=True)
+class TaskConfig(BaseStepConfig):
+    """Base task execution config with common fields (all required)."""
 
-    model_path: str = Field(
-        default="kuleshov-group/compo-cad2-l24-dna-chtk-c8192-v2-b2-NpnkD-ba240000",
-        description="The path of the pre-trained model to use",
+    repo_id: str = Field(..., description="Hugging Face dataset repository identifier")
+    task: str = Field(..., description="Dataset configuration name")
+    split: str = Field(..., description="Dataset split name")
+    seq_column: str = Field(..., description="Sequence column name")
+    label_column: str = Field(..., description="Label column name")
+    num_workers: int | None = Field(
+        ..., description="Number of Ray workers to launch (defaults to available GPUs)"
+    )
+    model: str = Field(..., description="Masked language model identifier")
+    device: str = Field(..., description="Device for model execution")
+    batch_size: int = Field(..., gt=0, description="Inference batch size")
+    sample_rate: float | None = Field(default=None, description="Dataset sample rate")
+    sample_max_size: int | None = Field(
+        default=None, description="Maximum dataset size"
+    )
+    sample_seed: int = Field(default=0, description="Random seed for sampling")
+
+
+@dataclass(kw_only=True)
+class ZeroShotTaskConfig(TaskConfig):
+    """Zero-shot task execution configuration."""
+
+    type: TaskType = Field(
+        default=TaskType.zero_shot, description="Task execution type"
     )
 
-    device: str = Field(default="cuda", description="The device to run the model")
-    batch_size: int = Field(
-        default=128, description="The batch size for the model", gt=0
+
+@dataclass(kw_only=True)
+class EvoConsTaskConfig(TaskConfig):
+    """Evolutionary constraint task configuration."""
+
+    mask_token_index: int = Field(
+        default=4095, ge=0, description="Masked position index"
     )
-    token_idx: int = Field(default=255, description="The index of the nucleotide", ge=0)
-    simulation_mode: bool = Field(
-        default=True,
-        description="Whether to use fake random logits for testing (simulation_mode=True) or real model inference",
+
+
+@dataclass(kw_only=True)
+class MultiMaskTaskConfig(TaskConfig):
+    """Base configuration for tasks with multiple masked positions."""
+
+    mask_token_indexes: list[int] = Field(
+        default_factory=lambda: [4094, 4095, 4096],
+        description="Indices to mask per sequence",
     )
+    motif_len: int = Field(default=3, gt=0, description="Number of masked tokens")
+
+    @model_validator(mode="after")
+    def check_lengths(self) -> Self:
+        if len(self.mask_token_indexes) != self.motif_len:
+            raise ValueError("mask_token_indexes count must equal motif_len")
+        return self
+
+
+@dataclass(kw_only=True)
+class MotifTaskConfig(MultiMaskTaskConfig):
+    """Motif recovery task configuration."""
+
+    pass
+
+
+@dataclass(kw_only=True)
+class StructuralVariantTaskConfig(TaskConfig):
+    """Structural variant effect prediction task configuration."""
+
+    flanking: int = Field(default=5, gt=0, description="Flanking window size")
+
+
+@dataclass(kw_only=True)
+class CoreNonCoreTaskConfig(MultiMaskTaskConfig):
+    """Core/noncore classification task configuration."""
+
+    pass
+
+
+@dataclass(kw_only=True)
+class ComputeConfig:
+    """Compute resource configuration."""
+
+    device: str = Field(default="cuda", description="Device for model execution")
+    batch_size: int = Field(default=128, gt=0, description="Inference batch size")
     num_workers: int | None = Field(
         default=None,
-        description="The number of workers to use for Ray (defaults to available GPUs)",
+        description="Number of Ray workers to launch (defaults to available GPUs)",
     )
 
 
-@dataclass
-class GenerateScoresConfig(BaseStepConfig):
-    """Configuration for scores generation step."""
+@dataclass(kw_only=True)
+class SampleConfig:
+    """Dataset sampling configuration."""
 
-    ...
-
-
-@dataclass
-class ComputeRocConfig(BaseStepConfig):
-    """Configuration for ROC computation step."""
-
-    ...
-
-
-@dataclass
-class EvolutionaryConstraintConfig:
-    """Configuration for evolutionary constraint pipeline steps."""
-
-    downsample_dataset: DownsampleDatasetConfig
-    generate_logits: GenerateLogitsConfig
-    generate_scores: GenerateScoresConfig
-    compute_roc: ComputeRocConfig
-
-
-@dataclass
-class TasksConfig:
-    evolutionary_constraint: EvolutionaryConstraintConfig
-
-
-@dataclass
-class ModelConfig:
-    """Configuration for a model."""
-
-    path: str = Field(description="Path or identifier for the model")
-    max_sequence_length: int = Field(
-        description="Maximum sequence length the model can handle"
+    rate: float | None = Field(
+        default=None,
+        gt=0,
+        le=1,
+        description="Sample rate applied first (e.g., 0.1 for 10% of data)",
     )
+    max_size: int | None = Field(
+        default=None,
+        gt=0,
+        description="Maximum dataset size applied after rate (caps final size)",
+    )
+    seed: int = Field(default=0, description="Random seed for sampling")
 
 
-@dataclass
-class DatasetConfig:
-    """Configuration for a dataset."""
+@dataclass(kw_only=True)
+class SplitConfig:
+    """Specification of a task name and split combination with common defaults."""
 
-    path: str = Field(description="Path or identifier for the dataset")
-    sequence_length: int = Field(description="Expected sequence length for the dataset")
+    task: str = Field(..., description="Task configuration name")
+    split: str = Field(..., description="Dataset split name")
+    repo_id: str = Field(
+        default="plantcad/PlantCAD2_zero_shot_tasks",
+        description="Hugging Face dataset repository identifier",
+    )
+    seq_column: str = Field(default="sequence", description="Sequence column name")
+    label_column: str = Field(default="label", description="Label column name")
 
 
-@dataclass
+@dataclass(kw_only=True)
 class PipelineConfig:
-    tasks: TasksConfig
-    datasets: list[DatasetConfig]
-    models: list[ModelConfig]
-    executor: ExecutorMainConfig
+    """Top-level pipeline configuration."""
 
-    def get_dataset_config(self, path: str) -> DatasetConfig:
-        """Get dataset configuration by path."""
-        for dataset in self.datasets:
-            if dataset.path == path:
-                return dataset
-        raise ValueError(
-            f"Dataset {path!r} not found in datasets config; "
-            f"available datasets: {[d.path for d in self.datasets]}"
-        )
-
-    def get_model_config(self, path: str) -> ModelConfig:
-        """Get model configuration by path."""
-        for model in self.models:
-            if model.path == path:
-                return model
-        raise ValueError(
-            f"Model {path!r} not found in models config; "
-            f"available models: {[m.path for m in self.models]}"
-        )
-
-    @model_validator(mode="after")
-    def check_dataset_path(self) -> Self:
-        """Check that the dataset path is present in the datasets config."""
-        dataset_path = (
-            self.tasks.evolutionary_constraint.downsample_dataset.dataset_path
-        )
-        self.get_dataset_config(dataset_path)  # Will raise ValueError if not found
-        return self
-
-    @model_validator(mode="after")
-    def check_model_path(self) -> Self:
-        """Check that the model path is present in the models config."""
-        model_path = self.tasks.evolutionary_constraint.generate_logits.model_path
-        self.get_model_config(model_path)  # Will raise ValueError if not found
-        return self
-
-    @model_validator(mode="after")
-    def check_token_idx(self) -> Self:
-        """Check that the token index is within both dataset sequence length and model max sequence length."""
-        dataset_path = (
-            self.tasks.evolutionary_constraint.downsample_dataset.dataset_path
-        )
-        model_path = self.tasks.evolutionary_constraint.generate_logits.model_path
-        token_idx = self.tasks.evolutionary_constraint.generate_logits.token_idx
-
-        # Get dataset and model configs
-        dataset_config = self.get_dataset_config(dataset_path)
-        model_config = self.get_model_config(model_path)
-
-        # Check against dataset sequence length
-        if token_idx >= dataset_config.sequence_length:
-            raise ValueError(
-                f"Token index {token_idx} is out of range for dataset {dataset_path!r}; "
-                f"must be less than dataset sequence length of {dataset_config.sequence_length}"
-            )
-
-        # Check against model max sequence length
-        if token_idx >= model_config.max_sequence_length:
-            raise ValueError(
-                f"Token index {token_idx} is out of range for model {model_path!r}; "
-                f"must be less than model max sequence length of {model_config.max_sequence_length}"
-            )
-        return self
-
-
-@dataclass
-class SlurmConfig:
-    """Configuration for SLURM execution."""
-
-    timeout_min: int = Field(default=5, description="Timeout in minutes")
-    partition: str = Field(default="gg", description="SLURM partition")
-    nodes: int = Field(default=1, description="Number of nodes")
-    tasks_per_node: int = Field(default=1, description="Tasks per node")
+    executor: ExecutorMainConfig = Field(..., description="Executor configuration")
+    models: list[str] = Field(
+        default_factory=lambda: ["kuleshov-group/PlantCaduceus_l32"],
+        description="Model identifiers to evaluate",
+    )
+    splits: list[SplitConfig] = Field(
+        default_factory=list,
+        description="Dataset splits to evaluate (task+split combinations)",
+    )
+    tasks: list[TaskConfig] = Field(
+        default_factory=list,
+        description="Task configurations (built from splits or specified directly)",
+    )
+    compute: ComputeConfig = Field(
+        default_factory=ComputeConfig, description="Compute resource configuration"
+    )
+    sampling: SampleConfig | None = Field(
+        default=None, description="Dataset sampling configuration"
+    )

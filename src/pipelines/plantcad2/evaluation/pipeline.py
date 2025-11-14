@@ -1,70 +1,165 @@
-"""Combined evaluation pipeline that orchestrates PlantCAD2 evaluation tasks."""
+from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
+from dataclasses import asdict, replace
+from typing import Any
+
 import draccus
+import pandas as pd
 from upath import UPath
-from thalas.execution import ExecutorStep
-from src.io.hf import initialize_hf_path
+
 from src.exec import executor_main
-from src.pipelines.plantcad2.evaluation.config import PipelineConfig
-from src.pipelines.plantcad2.evaluation.tasks.evolutionary_constraint.pipeline import (
-    EvolutionaryConstraintPipeline,
-)
+from src.io.hf import initialize_hf_path
 from src.utils.logging_utils import filter_known_warnings, initialize_logging
+from thalas.execution import Executor, ExecutorStep, InputName, this_output_path
+
+from src.pipelines.plantcad2.evaluation.config import (
+    CoreNonCoreTaskConfig,
+    EvoConsTaskConfig,
+    MotifTaskConfig,
+    PipelineConfig,
+    StructuralVariantTaskConfig,
+    TaskConfig,
+)
+from src.pipelines.plantcad2.evaluation.tasks import (
+    core_noncore_task,
+    evo_cons_task,
+    motif_task,
+    sv_task,
+)
 
 logger = logging.getLogger("ray")
 
 
+TASK_REGISTRY: dict[str, tuple[type[TaskConfig], Callable[..., Any]]] = {
+    "conservation_within_andropogoneae": (EvoConsTaskConfig, evo_cons_task),
+    "conservation_within_poaceae_non_tis": (EvoConsTaskConfig, evo_cons_task),
+    "conservation_within_poaceae_tis": (EvoConsTaskConfig, evo_cons_task),
+    "acceptor_recovery": (MotifTaskConfig, motif_task),
+    "donor_recovery": (MotifTaskConfig, motif_task),
+    "tis_recovery": (MotifTaskConfig, motif_task),
+    "tts_recovery": (MotifTaskConfig, motif_task),
+    "structural_variant_effect_prediction": (StructuralVariantTaskConfig, sv_task),
+    "acceptor_core_noncore_classification": (CoreNonCoreTaskConfig, core_noncore_task),
+    "donor_core_noncore_classification": (CoreNonCoreTaskConfig, core_noncore_task),
+    "tis_core_noncore_classification": (CoreNonCoreTaskConfig, core_noncore_task),
+    "tts_core_noncore_classification": (CoreNonCoreTaskConfig, core_noncore_task),
+}
+
+
+def build_task_steps(
+    config: PipelineConfig,
+) -> list[ExecutorStep | InputName]:
+    """Build executor steps from splits or use pre-configured tasks."""
+    tasks = config.tasks
+    if not tasks:
+        # Build task configs from splits + models
+        tasks = []
+        for split_config in config.splits:
+            if split_config.task not in TASK_REGISTRY:
+                raise ValueError(f"Unknown task: {split_config.task}")
+
+            config_cls = TASK_REGISTRY[split_config.task][0]
+
+            for model in config.models:
+                runtime_config = config_cls(
+                    repo_id=split_config.repo_id,
+                    task=split_config.task,
+                    split=split_config.split,
+                    seq_column=split_config.seq_column,
+                    label_column=split_config.label_column,
+                    num_workers=config.compute.num_workers,
+                    model=model,
+                    device=config.compute.device,
+                    batch_size=config.compute.batch_size,
+                    sample_rate=config.sampling.rate if config.sampling else None,
+                    sample_max_size=config.sampling.max_size
+                    if config.sampling
+                    else None,
+                    sample_seed=config.sampling.seed if config.sampling else 0,
+                    output_path=this_output_path(),
+                )
+                tasks.append(runtime_config)
+
+    # Convert task configs to executor steps
+    steps = []
+    for task_config in tasks:
+        if task_config.task not in TASK_REGISTRY:
+            raise ValueError(f"Unknown task: {task_config.task}")
+
+        description = task_config.task.replace("_", " ").title()
+        model_short = task_config.model.split("/")[-1]
+        step = ExecutorStep(
+            name=f"{task_config.task}_{task_config.split}_{model_short}",
+            fn=TASK_REGISTRY[task_config.task][1],
+            config=replace(task_config, output_path=this_output_path()),
+            description=f"{description} ({task_config.split}, {model_short})",
+        )
+        steps.append(step)
+
+    return steps
+
+
 class EvaluationPipeline:
-    """Pipeline class for PlantCAD2 evaluation tasks."""
+    """Pipeline coordinating all evaluation tasks."""
 
     def __init__(self, config: PipelineConfig):
         self.config = config
-        logger.info(f"EvaluationPipeline config: {self.config}")
-        self.evolutionary_constraint_pipeline = EvolutionaryConstraintPipeline(
-            self.config
-        )
+        config_str = json.dumps(asdict(config), indent=2, default=str)
+        logger.info(f"EvaluationPipeline config:\n{config_str}")
+        self.steps = build_task_steps(config)
 
-    def run_local_simulation(self) -> bool:
-        """Check if the pipeline is running in local simulation mode."""
-        return self.config.tasks.evolutionary_constraint.generate_logits.simulation_mode
+    def collect_results(self, executor: Executor) -> pd.DataFrame:
+        """Collect results from all completed tasks into a DataFrame.
 
-    def evolutionary_constraint(self) -> ExecutorStep:
-        """Run the evolutionary constraint evaluation task."""
-        return self.evolutionary_constraint_pipeline.last_step()
+        Parameters
+        ----------
+        executor : Executor
+            The executor instance with output_paths for each step
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame with one row per task, including task name, split, and metrics
+        """
+        results_list = []
+        for step in self.steps:
+            assert isinstance(step, ExecutorStep)
+            result_path = UPath(executor.output_paths[step]) / "step.json"
+            metrics = json.loads(result_path.read_text(encoding="utf-8"))
+
+            # Extract task metadata from step config
+            task_config = step.config
+            result_row = {
+                "dataset": task_config.repo_id,
+                "model": task_config.model,
+                "task": task_config.task,
+                "split": task_config.split,
+                **metrics,
+            }
+            results_list.append(result_row)
+
+        return pd.DataFrame(results_list)
 
 
-def main():
-    """Main entry point for the evaluation pipeline."""
+def main() -> None:
     initialize_logging()
     filter_known_warnings()
 
     logger.info("Starting evaluation pipeline")
-
-    # Parse configurations from command line
     cfg = draccus.parse(config_class=PipelineConfig)
 
-    # If the executor prefix is on HF, create the repository for it first or Thalas will fail with, e.g.:
-    # > FileNotFoundError: plantcad/_dev_pc2_eval/evolutionary_downsample_dataset-be132f/.executor_info (repository not found).
     if cfg.executor.prefix is None:
         raise ValueError("Executor prefix must be set")
     initialize_hf_path(cfg.executor.prefix)
 
-    # Initialize the pipeline
     pipeline = EvaluationPipeline(cfg)
+    executor = executor_main(cfg.executor, steps=pipeline.steps, init_logging=False)
 
-    # Fetch the final step
-    step = pipeline.evolutionary_constraint()
-
-    # Run the pipeline via Thalas/Ray
-    executor = executor_main(cfg.executor, [step], init_logging=False)
-
-    # Summarize results
-    results = json.loads(
-        (UPath(executor.output_paths[step]) / "step.json").read_text(encoding="utf-8")
-    )
-    logger.info(f"Pipeline complete! Results: {results}")
+    results_df = pipeline.collect_results(executor)
+    logger.info("All tasks complete:\n%s", results_df.to_string())
 
 
 if __name__ == "__main__":
