@@ -12,8 +12,15 @@ import xarray as xr
 from src.io.hf import (
     download_hf_file,
     download_hf_folder,
+    initialize_hf_path,
     upload_hf_file,
     upload_hf_folder,
+)
+from src.io.s3 import (
+    download_s3_file,
+    download_s3_folder,
+    upload_s3_file,
+    upload_s3_folder,
 )
 
 T = TypeVar("T")
@@ -37,7 +44,7 @@ def resolve_path(path: str | Path | UPath) -> UPath:
     Raises
     ------
     NotImplementedError
-        If protocol is not 'file' or 'hf'
+        If protocol is not 'file', 'hf', or 's3'
     """
     if not isinstance(path, UPath):
         path = UPath(path)
@@ -46,7 +53,7 @@ def resolve_path(path: str | Path | UPath) -> UPath:
     if path.protocol == "":
         path = UPath(path.as_uri())
 
-    if path.protocol not in ("file", "hf"):
+    if path.protocol not in ("file", "hf", "s3"):
         raise NotImplementedError(f"Protocol '{path.protocol}' not supported")
 
     return path
@@ -77,6 +84,35 @@ def resolve_cache_dir(cache_dir: str | Path | None) -> Path:
     default_cache_dir = Path.home() / ".cache" / "pipeline"
     default_cache_dir.mkdir(parents=True, exist_ok=True)
     return default_cache_dir
+
+
+def initialize_path(path: str | UPath) -> bool:
+    """Initialize a path by creating the associated directory or repository for it.
+
+    Note that S3 bucket initialization is not supported; this function is a NOOP for S3 paths.
+
+    Parameters
+    ----------
+    path : str | UPath
+        The path to initialize.
+
+    Returns
+    -------
+    bool
+        True if the path was initialized, False otherwise if the path protocol
+        does not support automatic initialization
+    """
+    upath = resolve_path(path)
+
+    # Create directory or repository for local paths or HF paths; all others are a NOOP
+    if upath.protocol == "file":
+        upath.mkdir(parents=True, exist_ok=True)
+        return True
+    if upath.protocol == "hf":
+        initialize_hf_path(upath)
+        return True
+
+    return False
 
 
 def resolve_temp_dir(temp_dir: str | Path | None) -> Path:
@@ -133,6 +169,13 @@ def _resolve_local_path(
         else:
             local_path = download_hf_file(upath, cache_dir=cache_dir)
             return Path(local_path)
+    elif upath.protocol == "s3":
+        if kind == "directory":
+            local_path = download_s3_folder(upath, cache_dir=cache_dir)
+            return Path(local_path)
+        else:
+            local_path = download_s3_file(upath, cache_dir=cache_dir)
+            return Path(local_path)
     else:
         raise NotImplementedError(f"Protocol '{upath.protocol}' not supported")
 
@@ -155,6 +198,12 @@ def _upload_local_path(
             upload_hf_file(local_path, upath)
         else:
             upload_hf_folder(local_path, upath)
+    elif upath.protocol == "s3":
+        # S3 path - upload
+        if kind == "file":
+            upload_s3_file(local_path, upath)
+        else:
+            upload_s3_folder(local_path, upath)
     else:
         raise NotImplementedError(f"Protocol '{upath.protocol}' not supported")
 
