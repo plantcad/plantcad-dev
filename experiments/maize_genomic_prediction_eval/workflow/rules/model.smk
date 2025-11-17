@@ -9,7 +9,7 @@ rule download_conservation:
         "wget {params} -O {output}"
 
 
-rule conservation_score:
+rule score_conservation:
     input:
         "results/defined_variants.parquet",
         "results/conservation/{conservation}.bw",
@@ -22,6 +22,43 @@ rule conservation_score:
         bw = pyBigWig.open(input[1])
         res = compute_conservation_score(V, bw)
         res.write_parquet(output[0])
+
+
+rule score_hf_llr:
+    input:
+        "results/defined_variants.parquet",
+        "results/genome.fa.gz",
+    output:
+        "results/defined_variants_scores/{model}_LLR.parquet",
+    wildcard_constraints:
+        model="|".join(config["hf_models"].keys()),
+    threads: workflow.cores
+    params:
+        model_path=lambda wildcards: config["hf_models"][wildcards.model]["path"],
+        context_size=lambda wildcards: config["hf_models"][wildcards.model]["context_size"],
+        batch_size=lambda wildcards: config["hf_models"][wildcards.model]["per_device_eval_batch_size"],
+        n_gpu=lambda wildcards: config["n_gpu"],
+        n_workers=workflow.cores // config["n_gpu"],
+    shell:
+        "torchrun --nproc_per_node={params.n_gpu} workflow/scripts/score_hf_llr.py "
+        "--variants {input[0]} "
+        "--genome {input[1]} "
+        "--model-path {params.model_path} "
+        "--context-size {params.context_size} "
+        "--batch-size {params.batch_size} "
+        "--n-workers {params.n_workers} "
+        "--output {output}"
+
+
+rule abs_llr:
+    input:
+        "results/defined_variants_scores/{model}_LLR.parquet",
+    output:
+        "results/defined_variants_scores/{model}_absLLR.parquet",
+    wildcard_constraints:
+        model="|".join(config["hf_models"].keys()),
+    run:
+        pl.read_parquet(input[0]).with_columns(pl.col("score").abs()).write_parquet(output[0])
 
 
 rule expand_scores:
