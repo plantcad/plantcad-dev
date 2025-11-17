@@ -32,6 +32,27 @@ from src.pipelines.plantcad2.evaluation.tasks import (
 
 logger = logging.getLogger("ray")
 
+# Motif configuration defaults by length
+MOTIF_L1_DEFAULTS: dict[str, Any] = {"mask_token_indexes": [4095], "motif_len": 1}
+MOTIF_L2_DEFAULTS: dict[str, Any] = {"mask_token_indexes": [4095, 4096], "motif_len": 2}
+MOTIF_L3_DEFAULTS: dict[str, Any] = {
+    "mask_token_indexes": [4094, 4095, 4096],
+    "motif_len": 3,
+}
+
+TASK_DEFAULTS: dict[str, dict[str, Any]] = {
+    "conservation_within_andropogoneae": MOTIF_L1_DEFAULTS,
+    "conservation_within_poaceae_non_tis": MOTIF_L1_DEFAULTS,
+    "conservation_within_poaceae_tis": MOTIF_L1_DEFAULTS,
+    "acceptor_recovery": MOTIF_L2_DEFAULTS,
+    "donor_recovery": MOTIF_L2_DEFAULTS,
+    "tis_recovery": MOTIF_L3_DEFAULTS,
+    "tts_recovery": MOTIF_L3_DEFAULTS,
+    "acceptor_core_noncore_classification": MOTIF_L2_DEFAULTS,
+    "donor_core_noncore_classification": MOTIF_L2_DEFAULTS,
+    "tis_core_noncore_classification": MOTIF_L3_DEFAULTS,
+    "tts_core_noncore_classification": MOTIF_L3_DEFAULTS,
+}
 
 TASK_REGISTRY: dict[str, tuple[type[TaskConfig], Callable[..., Any]]] = {
     "conservation_within_andropogoneae": (EvoConsTaskConfig, evo_cons_task),
@@ -63,6 +84,10 @@ def build_task_steps(
 
             config_cls = TASK_REGISTRY[split_config.task][0]
 
+            # Start with defaults for this task and apply overrides
+            defaults = TASK_DEFAULTS.get(split_config.task, {})
+            task_params = {**defaults, **split_config.overrides}
+
             for model in config.models:
                 runtime_config = config_cls(
                     repo_id=split_config.repo_id,
@@ -80,6 +105,7 @@ def build_task_steps(
                     else None,
                     sample_seed=config.sampling.seed if config.sampling else 0,
                     output_path=this_output_path(),
+                    **task_params,
                 )
                 tasks.append(runtime_config)
 
