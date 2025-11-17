@@ -11,7 +11,7 @@ import pandas as pd
 from upath import UPath
 
 from src.exec import executor_main
-from src.io.hf import initialize_hf_path
+from src.io.api import initialize_path
 from src.utils.logging_utils import filter_known_warnings, initialize_logging
 from thalas.execution import Executor, ExecutorStep, InputName, this_output_path
 
@@ -92,7 +92,7 @@ def build_task_steps(
         description = task_config.task.replace("_", " ").title()
         model_short = task_config.model.split("/")[-1]
         step = ExecutorStep(
-            name=f"{task_config.task}_{task_config.split}_{model_short}",
+            name=f"{task_config.task}__{task_config.split}__{model_short.lower()}",
             fn=TASK_REGISTRY[task_config.task][1],
             config=replace(task_config, output_path=this_output_path()),
             description=f"{description} ({task_config.split}, {model_short})",
@@ -153,7 +153,7 @@ def main() -> None:
 
     if cfg.executor.prefix is None:
         raise ValueError("Executor prefix must be set")
-    initialize_hf_path(cfg.executor.prefix)
+    initialize_path(cfg.executor.prefix)
 
     pipeline = EvaluationPipeline(cfg)
     executor = executor_main(cfg.executor, steps=pipeline.steps, init_logging=False)

@@ -1,7 +1,7 @@
 # Pipeline configuration for PlantCAD2 zero-shot evaluation tasks
 
 executor:
-  prefix: hf://datasets/plantcad/_dev_pc2_eval_20251029_r1
+  prefix: s3://oa-plantcad-dev/pipelines/pc2_eval_20251114_r1
   force_run_failed: true
 
 models:
