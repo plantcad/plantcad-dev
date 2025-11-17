@@ -11,7 +11,12 @@ from upath import UPath
 
 from src.io.api import read_xarray_mfdataset, read_xarray_netcdf, write_xarray_netcdf
 from src.utils.pipeline_utils import save_step_json
-from src.utils.ray_utils import num_cluster_gpus, num_cpus_per_node
+from src.utils.ray_utils import (
+    num_cluster_gpus,
+    run_once_per_gpu,
+    run_once_per_node,
+    run_on_exclusive_node,
+)
 from src.pipelines.plantcad2.evaluation.utils import (
     compute_core_noncore_scores,
     compute_evo_cons_probs,
@@ -19,6 +24,7 @@ from src.pipelines.plantcad2.evaluation.utils import (
     compute_ref_auroc,
     compute_sv_scores,
     compute_true_tokens_from_seq,
+    fetch_task_data,
     load_task_data,
     motif_accuracy_from_probs,
     reference_base_scores,
@@ -89,6 +95,13 @@ def _merge_predictions(
     return output_path
 
 
+def _validate_cache_files(cache_results: list[list[dict]]) -> None:
+    sorted_caches = [sorted(c, key=lambda x: x["filename"]) for c in cache_results]
+    assert all(sc == sorted_caches[0] for sc in sorted_caches), (
+        "Cache files must be identical across all nodes"
+    )
+
+
 def _write_worker_results(
     config: TaskConfigT,
     worker_id: int,
@@ -118,23 +131,33 @@ def _generate_results(
     worker: Callable[[TaskConfigT, int, int, str], str],
     output_dir: str,
 ) -> str:
+    # Cache dataset on each node and verify consistency
+    cache_results = run_once_per_node(fetch_task_data, config=config)
+    _validate_cache_files(cache_results)
+
     # Launch workers to run inference, defaulting to as
     # many workers as there are GPUs in the cluster
     num_workers = _resolve_num_workers(config.num_workers)
     worker_dir = str(UPath(output_dir) / "predictions")
-    pred_fn = ray.remote(num_gpus=1)(worker)
-    pred_futures = [
-        pred_fn.remote(config, worker_id, num_workers, worker_dir)
+
+    # Run worker function once per GPU, each with a unique worker_id
+    args = [
+        ((config, worker_id, num_workers, worker_dir), {})
         for worker_id in range(num_workers)
     ]
+    pred_futures = run_once_per_gpu(worker, args)
     pred_files = ray.get(pred_futures)
 
     # Merge predictions and join to labels on a single worker that
     # uses all CPUs available on a single node
     predictions_path = str(UPath(output_dir) / "predictions.nc")
-    num_cpus = num_cpus_per_node()
-    merge_fn = ray.remote(num_cpus=num_cpus)(_merge_predictions)
-    merge_future = merge_fn.remote(worker_dir, pred_files, predictions_path, config)
+    merge_future = run_on_exclusive_node(
+        _merge_predictions,
+        worker_dir=worker_dir,
+        worker_files=pred_files,
+        output_path=predictions_path,
+        config=config,
+    )
     result_path = ray.get(merge_future)
     return result_path
 
