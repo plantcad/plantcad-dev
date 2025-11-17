@@ -32,6 +32,35 @@ from src.pipelines.plantcad2.evaluation.tasks import (
 
 logger = logging.getLogger("ray")
 
+
+def align_mask_indexes(
+    defaults: dict[str, Any], model_context_length: int, seq_length: int
+) -> dict[str, Any]:
+    """Adjust mask indexes for shorter model context lengths.
+
+    If model context is shorter than sequence length, recenter mask indexes
+    to account for the center-cropping that will occur in load_task_data.
+    """
+    if model_context_length >= seq_length:
+        return defaults
+
+    if "mask_token_indexes" not in defaults:
+        raise ValueError(
+            f"mask_token_indexes required in defaults when model_context_length "
+            f"({model_context_length}) < seq_length ({seq_length})"
+        )
+
+    original_indexes = defaults["mask_token_indexes"]
+    offset = (seq_length - model_context_length) // 2
+    adjusted_indexes = [idx - offset for idx in original_indexes]
+
+    logger.info(
+        f"Adjusting mask_token_indexes for context_length={model_context_length}: "
+        f"{original_indexes} -> {adjusted_indexes} (offset={offset})"
+    )
+    return {**defaults, "mask_token_indexes": adjusted_indexes}
+
+
 # Motif configuration defaults by length
 MOTIF_L1_DEFAULTS: dict[str, Any] = {"mask_token_indexes": [4095], "motif_len": 1}
 MOTIF_L2_DEFAULTS: dict[str, Any] = {"mask_token_indexes": [4095, 4096], "motif_len": 2}
@@ -83,12 +112,16 @@ def build_task_steps(
                 raise ValueError(f"Unknown task: {split_config.task}")
 
             config_cls = TASK_REGISTRY[split_config.task][0]
+            task_defaults = TASK_DEFAULTS.get(split_config.task, {})
 
-            # Start with defaults for this task and apply overrides
-            defaults = TASK_DEFAULTS.get(split_config.task, {})
-            task_params = {**defaults, **split_config.overrides}
-
-            for model in config.models:
+            for model_config in config.models:
+                # Align mask indexes for model context length, then apply overrides
+                defaults = align_mask_indexes(
+                    defaults=task_defaults,
+                    model_context_length=model_config.context_length,
+                    seq_length=split_config.seq_length,
+                )
+                task_params = {**defaults, **split_config.overrides}
                 runtime_config = config_cls(
                     repo_id=split_config.repo_id,
                     task=split_config.task,
@@ -96,7 +129,13 @@ def build_task_steps(
                     seq_column=split_config.seq_column,
                     label_column=split_config.label_column,
                     num_workers=config.compute.num_workers,
-                    model=model,
+                    model_path=model_config.path,
+                    model_type=model_config.type,
+                    model_subfolder=model_config.subfolder,
+                    model_context_length=model_config.context_length,
+                    model_name=model_config.name,
+                    model_motif_inference_mode=model_config.motif_inference_mode,
+                    seq_length=split_config.seq_length,
                     device=config.compute.device,
                     batch_size=config.compute.batch_size,
                     sample_rate=config.sampling.rate if config.sampling else None,
@@ -115,13 +154,23 @@ def build_task_steps(
         if task_config.task not in TASK_REGISTRY:
             raise ValueError(f"Unknown task: {task_config.task}")
 
-        description = task_config.task.replace("_", " ").title()
-        model_short = task_config.model.split("/")[-1]
+        assert task_config.model_name, "model_name must be set"
         step = ExecutorStep(
-            name=f"{task_config.task}__{task_config.split}__{model_short.lower()}",
+            name=(
+                "__".join(
+                    [
+                        part.replace("/", "__").lower()
+                        for part in [
+                            task_config.task,
+                            task_config.split,
+                            task_config.model_name,
+                        ]
+                    ]
+                )
+            ),
             fn=TASK_REGISTRY[task_config.task][1],
             config=replace(task_config, output_path=this_output_path()),
-            description=f"{description} ({task_config.split}, {model_short})",
+            description=f"{task_config.task} ({task_config.split}, {task_config.model_name})",
         )
         steps.append(step)
 
@@ -160,7 +209,7 @@ class EvaluationPipeline:
             task_config = step.config
             result_row = {
                 "dataset": task_config.repo_id,
-                "model": task_config.model,
+                "model": task_config.model_path,
                 "task": task_config.task,
                 "split": task_config.split,
                 **metrics,

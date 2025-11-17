@@ -11,11 +11,44 @@ from typing_extensions import Self
 from src.utils.pipeline_utils import BaseStepConfig
 
 
-class TaskType(StrEnum):
-    """Task evaluation type."""
+class ModelType(StrEnum):
+    """Model architecture type."""
 
-    zero_shot = "zero_shot"
-    fine_tune = "fine_tune"
+    mlm = "mlm"
+    clm = "clm"
+
+
+class MotifInferenceMode(StrEnum):
+    """Inference mode for motif prediction tasks (CLM only)."""
+
+    fwd_only = "fwd_only"
+    rc_only = "rc_only"
+    fwd_rc_avg = "fwd_rc_avg"
+
+
+@dataclass(kw_only=True)
+class ModelConfig:
+    """Model specification with architecture type."""
+
+    path: str = Field(..., description="Model identifier")
+    type: ModelType = Field(..., description="Model architecture type")
+    context_length: int = Field(..., gt=0, description="Model context length in tokens")
+    subfolder: str = Field(default="", description="Subfolder within model repo")
+    name: str = Field(
+        default="",
+        description="Model display name (defaults to `path`)",
+    )
+    motif_inference_mode: MotifInferenceMode = Field(
+        default=MotifInferenceMode.fwd_rc_avg,
+        description="Inference mode for motif tasks (only relevant for CLM models)",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def set_default_name(cls, data: dict) -> dict:
+        if not data.get("name"):
+            data["name"] = data["path"]
+        return data
 
 
 # Use kw_only to support required and optional fields in any order
@@ -27,11 +60,22 @@ class TaskConfig(BaseStepConfig):
     task: str = Field(..., description="Dataset configuration name")
     split: str = Field(..., description="Dataset split name")
     seq_column: str = Field(..., description="Sequence column name")
+    seq_length: int = Field(..., gt=0, description="Sequence length in dataset")
     label_column: str = Field(..., description="Label column name")
     num_workers: int | None = Field(
         ..., description="Number of Ray workers to launch (defaults to available GPUs)"
     )
-    model: str = Field(..., description="Masked language model identifier")
+    model_path: str = Field(..., description="Model identifier")
+    model_type: ModelType = Field(
+        ..., description="Model architecture type (mlm or clm)"
+    )
+    model_subfolder: str = Field(default="", description="Subfolder within model repo")
+    model_context_length: int = Field(..., gt=0, description="Model context length")
+    model_name: str = Field(..., description="Model name for identification")
+    model_motif_inference_mode: MotifInferenceMode = Field(
+        default=MotifInferenceMode.fwd_rc_avg,
+        description="Inference mode for motif tasks (only relevant for CLM models)",
+    )
     device: str = Field(..., description="Device for model execution")
     batch_size: int = Field(..., gt=0, description="Inference batch size")
     sample_rate: float | None = Field(default=None, description="Dataset sample rate")
@@ -39,15 +83,6 @@ class TaskConfig(BaseStepConfig):
         default=None, description="Maximum dataset size"
     )
     sample_seed: int = Field(default=0, description="Random seed for sampling")
-
-
-@dataclass(kw_only=True)
-class ZeroShotTaskConfig(TaskConfig):
-    """Zero-shot task execution configuration."""
-
-    type: TaskType = Field(
-        default=TaskType.zero_shot, description="Task execution type"
-    )
 
 
 @dataclass(kw_only=True)
@@ -148,6 +183,9 @@ class SplitConfig:
         description="Hugging Face dataset repository identifier",
     )
     seq_column: str = Field(default="sequence", description="Sequence column name")
+    seq_length: int = Field(
+        default=8192, gt=0, description="Sequence length in dataset"
+    )
     label_column: str = Field(default="label", description="Label column name")
     overrides: dict[str, Any] = Field(
         default_factory=dict,
@@ -160,9 +198,9 @@ class PipelineConfig:
     """Top-level pipeline configuration."""
 
     executor: ExecutorMainConfig = Field(..., description="Executor configuration")
-    models: list[str] = Field(
-        default_factory=lambda: ["kuleshov-group/PlantCaduceus_l32"],
-        description="Model identifiers to evaluate",
+    models: list[ModelConfig] = Field(
+        default_factory=list,
+        description="Models to evaluate with their architecture types",
     )
     splits: list[SplitConfig] = Field(
         default_factory=list,

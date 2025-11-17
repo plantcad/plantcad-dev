@@ -17,7 +17,7 @@ from src.utils.ray_utils import (
     run_once_per_node,
     run_on_exclusive_node,
 )
-from src.pipelines.plantcad2.evaluation.utils import (
+from src.pipelines.plantcad2.evaluation.core import (
     compute_core_noncore_scores,
     compute_evo_cons_probs,
     compute_motif_probs,
@@ -193,7 +193,6 @@ def evo_cons_task(config: EvoConsTaskConfig) -> None:
     )
     probs = probs_da.values
     n_examples = len(results.sample)
-    # Extract 1D variables for metrics computation
     results_df = pd.DataFrame(
         {
             config.seq_column: results[config.seq_column].values,

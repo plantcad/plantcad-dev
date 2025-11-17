@@ -126,7 +126,7 @@ slurm = [
 filterwarnings = [
   "ignore:UPath 'hf' filesystem not explicitly implemented:UserWarning:upath.core",
 ]
-addopts = "--cov=src --cov-report=term-missing --cov-report=html"
+addopts = "-v --cov=src --cov-report=term-missing --cov-report=html"
 
 [tool.coverage.run]
 source = ["src"]
