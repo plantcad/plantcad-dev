@@ -138,11 +138,18 @@ def compute_conservation_score(V: pl.DataFrame, bw) -> pl.DataFrame:
 
     def compute_score(x: tuple) -> float:
         chrom, pos = x
-        if pos == -1:
-            return np.nan
         return bw.values(chrom, pos-1, pos)[0]
 
     return V.map_rows(compute_score).rename({"map": "score"})
+
+
+rule filter_defined_variants:
+    input:
+        "results/variants.parquet"
+    output:
+        "results/defined_variants.parquet"
+    run:
+        pl.read_parquet(input[0]).filter(pl.col("pos") != -1).write_parquet(output[0])
 
 
 rule download_genome:

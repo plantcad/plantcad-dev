@@ -11,10 +11,10 @@ rule download_conservation:
 
 rule conservation_score:
     input:
-        "results/variants.parquet",
+        "results/defined_variants.parquet",
         "results/conservation/{conservation}.bw",
     output:
-        "results/variant_scores/{conservation}.parquet",
+        "results/defined_variants_scores/{conservation}.parquet",
     wildcard_constraints:
         conservation="|".join(config["conservation_models"].keys()),
     run:
@@ -22,6 +22,31 @@ rule conservation_score:
         bw = pyBigWig.open(input[1])
         res = compute_conservation_score(V, bw)
         res.write_parquet(output[0])
+
+
+rule expand_scores:
+    input:
+        "results/variants.parquet",
+        "results/defined_variants_scores/{model}.parquet",
+    output:
+        "results/variant_scores/{model}.parquet",
+    run:
+        variants = pl.read_parquet(input[0])
+        defined_scores = pl.read_parquet(input[1])
+
+        # Create mask for defined variants (pos != -1)
+        mask = (variants["pos"] != -1).to_numpy()
+
+        # Initialize full score array with NaN
+        n_variants = len(variants)
+        full_scores = np.full(n_variants, np.nan)
+
+        # Apply scores where mask is True
+        full_scores[mask] = defined_scores["score"].to_numpy()
+
+        # Create output DataFrame with score column
+        result = pl.DataFrame({"score": full_scores})
+        result.write_parquet(output[0])
 
 
 rule quantile_binarization:
