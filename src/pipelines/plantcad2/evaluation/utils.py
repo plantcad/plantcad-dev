@@ -7,7 +7,7 @@ from typing import Optional, Sequence, Tuple, TypeVar
 import numpy as np
 import pandas as pd
 import torch
-from datasets import Dataset, load_dataset
+from datasets import Dataset
 from numpy.typing import NDArray
 from sklearn.metrics import auc, roc_curve
 from torch.utils.data import DataLoader, Dataset as TorchDataset
@@ -21,6 +21,7 @@ from src.pipelines.plantcad2.evaluation.config import (
     StructuralVariantTaskConfig,
     TaskConfig,
 )
+from src.utils.hf_utils import load_hf_dataset
 
 logger = logging.getLogger("ray")
 
@@ -105,13 +106,27 @@ class SingleMaskDataset(MultiMaskDataset):
         super().__init__(sequences, tokenizer, [token_idx])
 
 
+def fetch_task_data(config: TaskConfigT) -> list[dict]:
+    logger.info(
+        f"[task={config.task}, split={config.split}] Pre-fetching HF task data from repository {config.repo_id} ..."
+    )
+    dataset = load_hf_dataset(config.repo_id, config.task, split=config.split)
+    assert isinstance(dataset, Dataset)
+    result = dataset.cache_files
+    logger.info(
+        f"[task={config.task}, split={config.split}] Pre-fetched {len(dataset)} examples "
+        f"from repository {config.repo_id} to local cache:\n{dataset.cache_files}"
+    )
+    return result
+
+
 def load_task_data(
     config: TaskConfigT,
     *,
     worker_id: Optional[int] = None,
     num_workers: Optional[int] = None,
 ) -> pd.DataFrame:
-    dataset = load_dataset(config.repo_id, config.task, split=config.split)
+    dataset = load_hf_dataset(config.repo_id, config.task, split=config.split)
     assert isinstance(dataset, Dataset)
     dataset = dataset.map(lambda _, idx: {"example_idx": idx}, with_indices=True)
 

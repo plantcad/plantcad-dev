@@ -15,6 +15,9 @@ envs:
   TASK_MODULE: "src.pipelines.plantcad2.evaluation.pipeline"
   TASK_CONFIG: "src/pipelines/plantcad2/evaluation/config.yaml"
   TASK_ARGS: ""
+  AWS_ACCESS_KEY_ID: ""
+  AWS_SECRET_ACCESS_KEY: ""
+  AWS_SESSION_TOKEN: ""
 
 workdir: .
 
@@ -58,6 +61,9 @@ run: |
       RAY_DEDUP_LOGS="$RAY_DEDUP_LOGS" \
       RAY_ADDRESS="$RAY_GCS_ADDRESS" \
       HUGGING_FACE_HUB_TOKEN="$HUGGING_FACE_HUB_TOKEN" \
+      AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
+      AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
+      AWS_SESSION_TOKEN="$AWS_SESSION_TOKEN" \
       bash -c "source .venv/bin/activate && python -m ${TASK_MODULE} \
         --config_path ${TASK_CONFIG} \
         ${TASK_ARGS}"
