@@ -1,6 +1,6 @@
 configfile: "config/config.yaml"
 
-all_models = config["eval_models"] + ["baseline"]
+all_models = ["baseline"] + config["eval_models"]
 
 include: "rules/common.smk"
 include: "rules/reml.smk"

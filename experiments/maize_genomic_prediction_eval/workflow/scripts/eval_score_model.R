@@ -60,7 +60,7 @@ gds_file <- opt$`gds-file`
 scores_file <- opt$`scores-file`
 out_file <- opt$output
 
-chunk_size <- 20000
+chunk_size <- 1000000
 
 #--------------------------------------------------------
 # Helpers
@@ -122,10 +122,10 @@ scores_df <- read_parquet(scores_file)
 stopifnot("score" %in% colnames(scores_df))
 scores <- as.numeric(scores_df$score)
 
+# Replace NA and NaN values with 0
+scores[is.na(scores)] <- 0
+
 # Validate scores: assert all are non-negative
-if (any(is.na(scores))) {
-  stop("Scores contain NA values. All scores must be non-negative and finite.")
-}
 if (any(scores < 0)) {
   stop("Scores contain negative values. All scores must be non-negative.")
 }

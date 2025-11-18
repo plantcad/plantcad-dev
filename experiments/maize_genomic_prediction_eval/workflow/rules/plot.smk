@@ -40,13 +40,14 @@ rule plot_metrics:
         def plot_metric(data, metric_column, output_path):
             g = sns.catplot(
                 data=data,
-                kind="bar",
+                kind="point",
                 y="model",
                 x=metric_column,
                 col="trait",
                 row="validation",
                 sharex=False,
                 margin_titles=True,
+                linestyle="none",
             )
             g.savefig(output_path)
             plt.close()
