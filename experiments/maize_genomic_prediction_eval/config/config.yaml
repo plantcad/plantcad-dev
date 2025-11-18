@@ -44,10 +44,12 @@ eval_models:
   - quantile_binarized/PCAD1-l20_absLLR/0.001
   #- quantile_binarized/PCAD1-l20_absLLR/0.0001
   #- quantile_binarized/PCAD1-l20_absLLR/0.00001
+  - quantile_set_to_zero/PCAD1-l20_absLLR/0.001
 
   - quantile_binarized/PCAD1-l24_absLLR/0.001
   #- quantile_binarized/PCAD1-l24_absLLR/0.0001
   #- quantile_binarized/PCAD1-l24_absLLR/0.00001
+  - quantile_set_to_zero/PCAD1-l24_absLLR/0.001
 
   #- quantile_binarized/PCAD1-l28_absLLR/0.001
   #- quantile_binarized/PCAD1-l28_absLLR/0.0001
@@ -56,3 +58,4 @@ eval_models:
   - quantile_binarized/PCAD1-l32_absLLR/0.001
   #- quantile_binarized/PCAD1-l32_absLLR/0.0001
   #- quantile_binarized/PCAD1-l32_absLLR/0.00001
+  - quantile_set_to_zero/PCAD1-l32_absLLR/0.001

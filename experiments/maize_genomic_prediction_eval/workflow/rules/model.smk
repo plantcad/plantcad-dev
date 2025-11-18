@@ -114,3 +114,47 @@ rule quantile_binarization:
             .select("score")
         )
         new_x.write_parquet(output[0])
+
+
+rule subtract_and_clip:
+    input:
+        "results/variant_scores/{model}.parquet",
+    output:
+        "results/variant_scores/subtract_and_clip/{model}/{val}.parquet",
+    run:
+        val = float(wildcards.val)
+        (
+            pl.read_parquet(input[0])
+            .with_columns((pl.col("score") - val).clip(lower_bound=0).alias("score"))
+            .write_parquet(output[0])
+        )
+
+
+rule quantile_set_to_zero:
+    input:
+        "results/variant_scores/{model}.parquet",
+    output:
+        "results/variant_scores/quantile_set_to_zero/{model}/{q}.parquet",
+    run:
+        q = float(wildcards.q)
+        x = pl.read_parquet(input[0])
+        n_total = len(x)
+        n_top = int(q * n_total)
+
+        new_x = (
+            x
+            # ensure that NaN values are treated as the smallest value
+            .fill_nan(x["score"].min() - 1)
+            .with_row_index("original_idx")
+            .sample(fraction=1, seed=42, shuffle=True)
+            .sort("score", descending=True, maintain_order=True)
+            .with_columns(
+                pl.when(pl.int_range(pl.len()) < n_top)
+                .then(pl.col("score"))
+                .otherwise(0.0)
+                .alias("score")
+            )
+            .sort("original_idx")
+            .select("score")
+        )
+        new_x.write_parquet(output[0])
