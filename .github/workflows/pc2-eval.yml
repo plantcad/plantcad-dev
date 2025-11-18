@@ -1,0 +1,167 @@
+# GitHub Action for running PlantCAD pipelines on Lambda Cloud via SkyPilot
+name: Lambda Pipeline Execution
+
+on:
+  workflow_dispatch:
+    inputs:
+      cluster_name:
+        description: 'Cluster name'
+        required: true
+        default: 'pc-gha'
+        type: string
+      num_nodes:
+        description: 'Number of nodes'
+        required: true
+        default: '1'
+        type: string
+      gpu_type:
+        description: 'GPU type (e.g., A10:1, A100:1)'
+        required: true
+        default: 'A10:1'
+        type: string
+      disk_size:
+        description: 'Disk size in GB'
+        required: true
+        default: '100'
+        type: string
+      task_module:
+        description: 'Python module to execute (e.g., src.pipelines.plantcad2.evaluation.pipeline)'
+        required: true
+        default: 'src.pipelines.plantcad2.evaluation.pipeline'
+        type: string
+      task_config:
+        description: 'Path to task config file'
+        required: true
+        default: 'src/pipelines/plantcad2/evaluation/config.yaml'
+        type: string
+      task_args:
+        description: 'Additional arguments for the task (optional)'
+        required: false
+        default: ''
+        type: string
+      executor_prefix:
+        description: 'Executor prefix (S3 path). Use {USER} and {DATE} as placeholders.'
+        required: false
+        default: 's3://oa-plantcad-dev/pipelines/_dev__pc2-eval__{USER}__{DATE}'
+        type: string
+      teardown_cluster:
+        description: 'Teardown cluster after task completion'
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  run-pipeline:
+    name: Run Pipeline on Lambda
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4.1.5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: |
+          uv sync --extra cpu
+
+      - name: Configure Lambda credentials
+        run: |
+          mkdir -p ~/.lambda_cloud
+          echo "${{ secrets.LAMBDA_API_KEY }}" > ~/.lambda_cloud/lambda_keys
+
+      - name: Configure AWS credentials
+        run: |
+          mkdir -p ~/.aws
+          cat > ~/.aws/credentials << EOF
+          [default]
+          aws_access_key_id = ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key = ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          EOF
+
+          cat > ~/.aws/config << EOF
+          [default]
+          region = us-east-1
+          EOF
+
+      - name: Verify cloud provider availability
+        run: |
+          uv run sky check
+
+      - name: Launch Lambda cluster
+        env:
+          HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          uv run sky launch \
+            -c ${{ inputs.cluster_name }} \
+            --num-nodes ${{ inputs.num_nodes }} \
+            --gpus "${{ inputs.gpu_type }}" \
+            --disk-size ${{ inputs.disk_size }} \
+            --cloud lambda \
+            --yes \
+            --env HUGGING_FACE_HUB_TOKEN \
+            --env AWS_ACCESS_KEY_ID \
+            --env AWS_SECRET_ACCESS_KEY \
+            configs/skypilot/cluster.sky.yaml
+
+      - name: Prepare task arguments
+        id: prepare_args
+        run: |
+          # Get current date in YYYYMMDD format
+          CURRENT_DATE=$(date +%Y%m%d)
+
+          # Substitute {USER} and {DATE} placeholders (case-sensitive) in executor prefix
+          EXECUTOR_PREFIX="${{ inputs.executor_prefix }}"
+
+          # Replace {USER} with GitHub actor (case-sensitive)
+          EXECUTOR_PREFIX=$(echo "$EXECUTOR_PREFIX" | sed 's/{USER}/${{ github.actor }}/g')
+
+          # Replace {DATE} with current date (case-sensitive)
+          EXECUTOR_PREFIX=$(echo "$EXECUTOR_PREFIX" | sed "s/{DATE}/${CURRENT_DATE}/g")
+
+          # Combine executor prefix arg with additional task args
+          COMBINED_ARGS="--executor.prefix=${EXECUTOR_PREFIX}"
+          if [ -n "${{ inputs.task_args }}" ]; then
+            COMBINED_ARGS="${COMBINED_ARGS} ${{ inputs.task_args }}"
+          fi
+
+          echo "TASK_ARGS=${COMBINED_ARGS}" >> $GITHUB_ENV
+          echo "Executor prefix: ${EXECUTOR_PREFIX}"
+          echo "Combined task args: ${COMBINED_ARGS}"
+
+      - name: Submit task to cluster
+        env:
+          HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          TASK_MODULE: ${{ inputs.task_module }}
+          TASK_CONFIG: ${{ inputs.task_config }}
+        run: |
+          uv run sky exec ${{ inputs.cluster_name }} \
+            --num-nodes ${{ inputs.num_nodes }} \
+            --yes \
+            --env HUGGING_FACE_HUB_TOKEN \
+            --env AWS_ACCESS_KEY_ID \
+            --env AWS_SECRET_ACCESS_KEY \
+            --env TASK_MODULE \
+            --env TASK_CONFIG \
+            --env TASK_ARGS \
+            configs/skypilot/task.sky.yaml
+
+      - name: Teardown cluster
+        if: ${{ inputs.teardown_cluster }}
+        run: |
+          uv run sky down -y ${{ inputs.cluster_name }}
+
+      - name: Teardown cluster on failure
+        if: failure() && inputs.teardown_cluster
+        run: |
+          uv run sky down -y ${{ inputs.cluster_name }} || true
