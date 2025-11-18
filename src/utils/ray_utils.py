@@ -115,7 +115,7 @@ def run_once_per_node(
     func : Callable[..., T]
         Function to execute on each node
     num_cpus : int, default=1
-        Number of CPUs per node for the placement group (not the actor)
+        Number of CPUs to allocate per node for the placement group (not the actor)
     options : dict[str, Any] | None, optional
         Options to pass to ActorClass.options(). See:
         https://docs.ray.io/en/latest/ray-core/api/doc/ray.actor.ActorClass.options.html
@@ -151,21 +151,12 @@ def run_once_per_node(
         return results
     finally:
         # Always clean up actors and placement group
-        cleanup_actors_and_pg(actors, pg)
+        _remove_actors_and_placement_group(actors, pg)
 
 
-def cleanup_actors_and_pg(
+def _remove_actors_and_placement_group(
     actors: list[ray.actor.ActorHandle], pg: PlacementGroup
 ) -> None:
-    """Clean up actors and placement group to free Ray cluster resources.
-
-    Parameters
-    ----------
-    actors : list[ray.actor.ActorHandle]
-        List of actor handles to kill
-    pg : PlacementGroup
-        Placement group to remove
-    """
     for actor in actors:
         ray.kill(actor)
     remove_placement_group(pg)

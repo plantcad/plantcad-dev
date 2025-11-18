@@ -23,11 +23,12 @@ T = TypeVar("T")
 
 # ------------------------------------------------------------------------------
 # Retriable error conditions from:
-# https://github.com/huggingface/datasets/blob/17f40a318a1f8c7d33c2a4dd17934f81d14a7f57/src/datasets/utils/file_utils.py
+# - https://github.com/huggingface/datasets/blob/17f40a318a1f8c7d33c2a4dd17934f81d14a7f57/src/datasets/utils/file_utils.py
+# - https://github.com/huggingface/huggingface_hub/blob/ec95611829964f7f6643ca3d01c8a996bfac016c/src/huggingface_hub/hf_file_system.py
 
 # HTTP status codes for retryable errors
 RATE_LIMIT_CODE = 429
-SERVER_UNAVAILABLE_CODE = 504
+SERVICE_UNAVAILABLE_CODES = (500, 502, 503, 504)
 
 # Connection errors that should trigger retries
 CONNECTION_ERRORS_TO_RETRY = (
@@ -44,7 +45,7 @@ def _is_retryable_hf_error(exception: BaseException) -> bool:
 
     Retryable errors include:
     - HfHubHTTPError with 429 (Too Many Requests) status code
-    - HfHubHTTPError with 504 (Server Unavailable) status code
+    - HfHubHTTPError with 5xx (Service Unavailable) status codes (500, 502, 503, 504)
     - Various connection errors (timeout, connection errors, etc.)
 
     Parameters
@@ -66,7 +67,9 @@ def _is_retryable_hf_error(exception: BaseException) -> bool:
         if exception.response is None:
             return False
         status_code = exception.response.status_code
-        return status_code in (RATE_LIMIT_CODE, SERVER_UNAVAILABLE_CODE)
+        return (
+            status_code == RATE_LIMIT_CODE or status_code in SERVICE_UNAVAILABLE_CODES
+        )
 
     return False
 
@@ -82,7 +85,7 @@ def retry_hf_function(
     This function creates a wrapper around any callable that automatically retries
     on transient errors using the tenacity library. Retryable errors include:
     - HTTP 429 (Rate Limit) errors
-    - HTTP 504 (Server Unavailable) errors
+    - HTTP 5xx (Service Unavailable) errors (500, 502, 503, 504)
     - Connection errors (timeouts, disconnections, etc.)
 
     Parameters
