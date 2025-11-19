@@ -1,27 +1,8 @@
-rule summarize_metrics:
-    input:
-        "results/metrics/{model}.parquet"
-    output:
-        "results/summarized_metrics/{model}.parquet"
-    wildcard_constraints:
-        model="|".join(all_models)
-    run:
-        (
-            pl.read_parquet(input[0])
-            .group_by("validation", "trait")
-            .agg([
-                pl.col("r").mean().alias("mean_r"),
-                pl.col("MSE").mean().alias("mean_MSE")
-            ])
-            .write_parquet(output[0])
-        )
-
-
 rule merge_metrics:
     input:
-        expand("results/summarized_metrics/{model}.parquet", model=all_models)
+        expand("results/metrics/{model}.parquet", model=all_models)
     output:
-        "results/summarized_metrics/merged.parquet"
+        "results/metrics/merged.parquet"
     run:
         res = pl.concat([
             pl.read_parquet(path).with_columns(pl.lit(model).alias("model"))
@@ -32,7 +13,7 @@ rule merge_metrics:
 
 rule plot_metrics:
     input:
-        "results/summarized_metrics/merged.parquet"
+        "results/metrics/merged.parquet"
     output:
         r_plot="results/plots/r_metrics.png",
         mse_plot="results/plots/mse_metrics.png"
@@ -53,5 +34,11 @@ rule plot_metrics:
             plt.close()
 
         df = pl.read_parquet(input[0]).to_pandas()
-        plot_metric(df, "mean_r", output.r_plot)
-        plot_metric(df, "mean_MSE", output.mse_plot)
+        trait_map = {
+            "DTS": "days to silking",
+            "PH": "plant height",
+            "GY_adjusted": "grain yield adjusted for DTS",
+        }
+        df["trait"] = df["trait"].map(trait_map)
+        plot_metric(df, "r", output.r_plot)
+        plot_metric(df, "MSE", output.mse_plot)

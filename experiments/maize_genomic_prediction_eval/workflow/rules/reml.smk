@@ -67,7 +67,7 @@ rule eval_score_model:
     conda:
         "../envs/r-reml.yaml"
     threads:
-        workflow.cores // 4
+        4
     wildcard_constraints:
         model = "|".join(config["eval_models"])
     shell:
