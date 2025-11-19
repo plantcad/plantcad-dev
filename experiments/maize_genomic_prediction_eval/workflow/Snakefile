@@ -1,0 +1,14 @@
+configfile: "config/config.yaml"
+
+all_models = ["baseline"] + config["eval_models"]
+
+include: "rules/common.smk"
+include: "rules/reml.smk"
+include: "rules/model.smk"
+include: "rules/plot.smk"
+
+
+rule all:
+    input:
+        "results/plots/r_metrics.png",
+        "results/plots/mse_metrics.png",
