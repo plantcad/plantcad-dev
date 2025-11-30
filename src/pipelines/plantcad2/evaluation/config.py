@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Any
 
 from pydantic import Field, model_validator
 from pydantic.dataclasses import dataclass
@@ -50,15 +51,6 @@ class ZeroShotTaskConfig(TaskConfig):
 
 
 @dataclass(kw_only=True)
-class EvoConsTaskConfig(TaskConfig):
-    """Evolutionary constraint task configuration."""
-
-    mask_token_index: int = Field(
-        default=4095, ge=0, description="Masked position index"
-    )
-
-
-@dataclass(kw_only=True)
 class MultiMaskTaskConfig(TaskConfig):
     """Base configuration for tasks with multiple masked positions."""
 
@@ -73,6 +65,25 @@ class MultiMaskTaskConfig(TaskConfig):
         if len(self.mask_token_indexes) != self.motif_len:
             raise ValueError("mask_token_indexes count must equal motif_len")
         return self
+
+
+@dataclass(kw_only=True)
+class EvoConsTaskConfig(MultiMaskTaskConfig):
+    """Evolutionary constraint task configuration (single mask position)."""
+
+    @model_validator(mode="after")
+    def check_length(self) -> Self:
+        if self.motif_len != 1:
+            raise ValueError("EvoConsTaskConfig requires motif_len=1")
+        return self
+
+    @property
+    def mask_token_index(self) -> int:
+        """Single mask token position."""
+        assert len(self.mask_token_indexes) == 1, (
+            "EvoConsTaskConfig requires motif_len=1"
+        )
+        return self.mask_token_indexes[0]
 
 
 @dataclass(kw_only=True)
@@ -138,6 +149,10 @@ class SplitConfig:
     )
     seq_column: str = Field(default="sequence", description="Sequence column name")
     label_column: str = Field(default="label", description="Label column name")
+    overrides: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Task-specific config overrides (e.g., mask_token_indexes, motif_len)",
+    )
 
 
 @dataclass(kw_only=True)

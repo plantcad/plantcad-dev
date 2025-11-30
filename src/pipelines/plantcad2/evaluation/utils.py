@@ -18,6 +18,7 @@ from src.pipelines.plantcad2.evaluation.config import (
     CoreNonCoreTaskConfig,
     EvoConsTaskConfig,
     MotifTaskConfig,
+    MultiMaskTaskConfig,
     StructuralVariantTaskConfig,
     TaskConfig,
 )
@@ -99,13 +100,6 @@ class MultiMaskDataset(TorchDataset):
         return {"masked_ids": input_ids}
 
 
-class SingleMaskDataset(MultiMaskDataset):
-    def __init__(
-        self, sequences: pd.Series, tokenizer: PreTrainedTokenizer, token_idx: int
-    ):
-        super().__init__(sequences, tokenizer, [token_idx])
-
-
 def fetch_task_data(config: TaskConfigT) -> list[dict]:
     logger.info(
         f"[task={config.task}, split={config.split}] Pre-fetching HF task data from repository {config.repo_id} ..."
@@ -155,6 +149,29 @@ def _masked_probs(
     masks_per_sequence: int,
     desc: str,
 ) -> NDArray[np.floating]:
+    """Compute nucleotide probabilities at masked positions.
+
+    Parameters
+    ----------
+    model : AutoModelForMaskedLM
+        Masked language model for inference
+    tokenizer : PreTrainedTokenizer
+        Tokenizer matching the model
+    loader : DataLoader
+        DataLoader providing batches with 'masked_ids' key
+    device : str
+        Device for model inference (e.g., 'cuda', 'cpu')
+    masks_per_sequence : int
+        Number of masked positions per sequence
+    desc : str
+        Description for progress bar
+
+    Returns
+    -------
+    NDArray[np.floating]
+        Probability array of shape (num_sequences, masks_per_sequence, N_NUCLEOTIDES)
+        where N_NUCLEOTIDES is typically 4 (A, C, G, T)
+    """
     idxs = [tokenizer.get_vocab()[n] for n in NUCLEOTIDES_LOWER]
     grouped_probs: list[NDArray[np.floating]] = []
     for batch in tqdm(loader, desc=desc):
@@ -180,7 +197,15 @@ def _masked_probs(
         raise ValueError(
             "Number of masked positions not divisible by masks_per_sequence"
         )
-    return stacked.reshape(-1, masks_per_sequence, stacked.shape[-1])
+    result = stacked.reshape(-1, masks_per_sequence, stacked.shape[-1])
+    assert result.ndim == 3, f"Expected 3D array, got shape {result.shape}"
+    assert result.shape[1] == masks_per_sequence, (
+        f"Expected masks_per_sequence={masks_per_sequence}, got shape {result.shape}"
+    )
+    assert result.shape[2] == N_NUCLEOTIDES, (
+        f"Expected {N_NUCLEOTIDES} nucleotides, got shape {result.shape}"
+    )
+    return result
 
 
 def _unmasked_probs(
@@ -192,6 +217,29 @@ def _unmasked_probs(
     *,
     desc: str,
 ) -> NDArray[np.floating]:
+    """Compute nucleotide probabilities at all positions (unmasked inference).
+
+    Parameters
+    ----------
+    sequences : pd.Series
+        Series of DNA sequences to process
+    tokenizer : PreTrainedTokenizer
+        Tokenizer matching the model
+    model : AutoModelForMaskedLM
+        Masked language model for inference
+    device : str
+        Device for model inference (e.g., 'cuda', 'cpu')
+    batch_size : int
+        Number of sequences to process per batch
+    desc : str
+        Description for progress bar
+
+    Returns
+    -------
+    NDArray[np.floating]
+        Probability array of shape (num_sequences, seq_len, N_NUCLEOTIDES)
+        where N_NUCLEOTIDES is typically 4 (A, C, G, T)
+    """
     idxs = [tokenizer.get_vocab()[n] for n in NUCLEOTIDES_LOWER]
     seqs = sequences.astype(str).tolist()
     all_probs: Optional[NDArray[np.floating]] = None
@@ -215,7 +263,14 @@ def _unmasked_probs(
             all_probs = np.zeros((len(seqs), seq_len, N_NUCLEOTIDES), dtype=np.float32)
         all_probs[i : i + len(batch), :, :] = probs
     if all_probs is None:
-        return np.zeros((0, 0, N_NUCLEOTIDES), dtype=np.float32)
+        return np.zeros((0, 0, len(idxs)), dtype=np.float32)
+    assert all_probs.ndim == 3, f"Expected 3D array, got shape {all_probs.shape}"
+    assert all_probs.shape[0] == len(seqs), (
+        f"Expected num_sequences={len(seqs)}, got shape {all_probs.shape}"
+    )
+    assert all_probs.shape[2] == len(idxs), (
+        f"Expected {len(idxs)} nucleotides, got shape {all_probs.shape}"
+    )
     return all_probs
 
 
@@ -407,37 +462,43 @@ def compute_evo_cons_probs(
 ) -> Tuple[NDArray[np.int_], NDArray[np.floating]]:
     if len(df) == 0:
         return np.zeros(0, dtype=int), np.zeros((0, N_NUCLEOTIDES), dtype=np.float32)
-    _validate_sequences(df, config.seq_column, [config.mask_token_index])
-    dev = _require_cuda(config.device)
-    model, tokenizer = _load_model(config.model, dev)
-    dataset = SingleMaskDataset(
-        df[config.seq_column], tokenizer, config.mask_token_index
-    )
-    loader = DataLoader(
-        dataset, batch_size=config.batch_size, shuffle=False, num_workers=1
-    )
-    probs = _masked_probs(
-        model,
-        tokenizer,
-        loader,
-        dev,
-        masks_per_sequence=1,
-        desc=f"[{config.task}/{config.split}] Masked logits @ {config.mask_token_index}",
-    )
+    desc = f"[{config.task}/{config.split}] Masked logits @ {config.mask_token_index}"
+    ids, probs, _ = _compute_masked_probs_for_positions(df, config, desc)
+    # Reshape from (num_examples, 1, N_NUCLEOTIDES) to (num_examples, N_NUCLEOTIDES)
     probs = probs.reshape(-1, probs.shape[-1])
-    return df["example_idx"].to_numpy(), probs
-
-
-def compute_motif_probs(
-    df: pd.DataFrame,
-    config: MotifTaskConfig,
-) -> Tuple[NDArray[np.int_], NDArray[np.floating]]:
-    if len(df) == 0:
-        motif_len = len(config.mask_token_indexes)
-        return (
-            np.zeros(0, dtype=int),
-            np.zeros((0, motif_len, N_NUCLEOTIDES), dtype=np.float32),
+    if len(ids) != len(probs):
+        raise ValueError(
+            f"Length mismatch: ids has {len(ids)} elements but probs has shape {probs.shape}"
         )
+    return ids, probs
+
+
+def _compute_masked_probs_for_positions(
+    df: pd.DataFrame,
+    config: MultiMaskTaskConfig,
+    desc: str,
+) -> Tuple[NDArray[np.int_], NDArray[np.floating], list[int]]:
+    """Compute masked probabilities for specified positions.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input dataframe containing sequences
+    config : MultiMaskTaskConfig
+        Configuration with mask_token_indexes, seq_column, device, batch_size, model
+    desc : str
+        Description for progress bar
+
+    Returns
+    -------
+    ids : NDArray[np.int_]
+        Example indices from dataframe
+    probs : NDArray[np.floating]
+        Probability array of shape (num_examples, num_positions, N_NUCLEOTIDES)
+    positions : list[int]
+        List of mask token positions
+    """
+    ids = df["example_idx"].to_numpy()
     positions = [int(x) for x in config.mask_token_indexes]
     _validate_sequences(df, config.seq_column, positions)
     dev = _require_cuda(config.device)
@@ -452,9 +513,32 @@ def compute_motif_probs(
         loader,
         dev,
         masks_per_sequence=len(positions),
-        desc=f"[{config.task}/{config.split}] Masked logits motif_len={len(positions)}",
+        desc=desc,
     )
-    return df["example_idx"].to_numpy(), probs
+    if len(ids) != len(probs):
+        raise ValueError(
+            f"Length mismatch: ids has {len(ids)} elements but probs has shape {probs.shape}"
+        )
+    return ids, probs, positions
+
+
+def compute_motif_probs(
+    df: pd.DataFrame,
+    config: MotifTaskConfig,
+) -> Tuple[NDArray[np.int_], NDArray[np.floating]]:
+    if len(df) == 0:
+        motif_len = len(config.mask_token_indexes)
+        return (
+            np.zeros(0, dtype=int),
+            np.zeros((0, motif_len, N_NUCLEOTIDES), dtype=np.float32),
+        )
+    desc = f"[{config.task}/{config.split}] Masked logits motif_len={len(config.mask_token_indexes)}"
+    ids, probs, _ = _compute_masked_probs_for_positions(df, config, desc)
+    if len(ids) != len(probs):
+        raise ValueError(
+            f"Length mismatch: ids has {len(ids)} elements but probs has shape {probs.shape}"
+        )
+    return ids, probs
 
 
 @dataclass
@@ -517,25 +601,13 @@ def compute_core_noncore_scores(
 ) -> Tuple[NDArray[np.int_], NDArray[np.floating]]:
     if len(df) == 0:
         return np.zeros(0, dtype=int), np.zeros(0, dtype=float)
-    positions = [int(x) for x in config.mask_token_indexes]
-    if len(positions) != config.motif_len:
-        raise ValueError("mask_idx count must equal motif_len")
-    _validate_sequences(df, config.seq_column, positions)
-    dev = _require_cuda(config.device)
-    model, tokenizer = _load_model(config.model, dev)
-    dataset = MultiMaskDataset(df[config.seq_column], tokenizer, positions)
-    loader = DataLoader(
-        dataset, batch_size=config.batch_size, shuffle=False, num_workers=1
-    )
-    probs = _masked_probs(
-        model,
-        tokenizer,
-        loader,
-        dev,
-        masks_per_sequence=len(positions),
-        desc=f"[{config.task}/{config.split}] Masked logits motif_len={config.motif_len}",
-    )
+    desc = f"[{config.task}/{config.split}] Masked logits motif_len={config.motif_len}"
+    ids, probs, positions = _compute_masked_probs_for_positions(df, config, desc)
     flat_probs = probs.reshape(-1, probs.shape[-1])
     true_tokens = compute_true_tokens_from_seq(df[config.seq_column], positions)
     scores = average_true_probabilities(flat_probs, true_tokens, config.motif_len)
-    return df["example_idx"].to_numpy(), scores
+    if len(ids) != len(scores):
+        raise ValueError(
+            f"Length mismatch: ids has {len(ids)} elements but scores has {len(scores)} elements"
+        )
+    return ids, scores
