@@ -1,7 +1,7 @@
 # Pipeline configuration for PlantCAD2 zero-shot evaluation tasks
 
 executor:
-  prefix: s3://oa-plantcad-dev/pipelines/pc2_eval_20251114_r1
+  prefix: s3://oa-plantcad-dev/pipelines/_dev_pc2_eval_20251117_r1
   force_run_failed: true
 
 models:
@@ -9,26 +9,25 @@ models:
 
 compute:
   device: cuda
-  batch_size: 32
+  batch_size: 48
   num_workers: null  # Auto-detect from available GPUs
 
 sampling:
   rate: 1.0  # Shuffle without downsampling
-  max_size: 5000
+  max_size: 10000
   seed: 42
 
 # Dataset splits to evaluate (task+split combinations)
-# TODO: Add skipped tasks back once storage layer is more reliable
 splits:
   # Acceptor splice site tasks
   - task: acceptor_core_noncore_classification
     split: test_maize
-  # - task: acceptor_core_noncore_classification
-  #   split: test_tomato
+  - task: acceptor_core_noncore_classification
+    split: test_tomato
   - task: acceptor_recovery
     split: test_maize
-  # - task: acceptor_recovery
-  #   split: test_tomato
+  - task: acceptor_recovery
+    split: test_tomato
 
   # Conservation tasks
   - task: conservation_within_poaceae_non_tis
@@ -45,29 +44,29 @@ splits:
   # Donor splice site tasks
   - task: donor_core_noncore_classification
     split: test_maize
-  # - task: donor_core_noncore_classification
-  #   split: test_tomato
+  - task: donor_core_noncore_classification
+    split: test_tomato
   - task: donor_recovery
     split: test_maize
-  # - task: donor_recovery
-  #   split: test_tomato
+  - task: donor_recovery
+    split: test_tomato
 
   # Translation initiation site (TIS) tasks
   - task: tis_core_noncore_classification
     split: test_maize
-  # - task: tis_core_noncore_classification
-  #   split: test_tomato
+  - task: tis_core_noncore_classification
+    split: test_tomato
   - task: tis_recovery
     split: test_maize
-  # - task: tis_recovery
-  #   split: test_tomato
+  - task: tis_recovery
+    split: test_tomato
 
   # Translation termination site (TTS) tasks
   - task: tts_core_noncore_classification
     split: test_maize
-  # - task: tts_core_noncore_classification
-  #   split: test_tomato
+  - task: tts_core_noncore_classification
+    split: test_tomato
   - task: tts_recovery
     split: test_maize
-  # - task: tts_recovery
-  #   split: test_tomato
+  - task: tts_recovery
+    split: test_tomato
