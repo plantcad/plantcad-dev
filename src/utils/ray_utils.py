@@ -3,7 +3,6 @@ from typing import Any, TypeVar
 
 import ray
 from ray.util.placement_group import (
-    PlacementGroup,
     placement_group,
     remove_placement_group,
 )
@@ -150,16 +149,10 @@ def run_once_per_node(
         results = ray.get(futures)
         return results
     finally:
-        # Always clean up actors and placement group
-        _remove_actors_and_placement_group(actors, pg)
-
-
-def _remove_actors_and_placement_group(
-    actors: list[ray.actor.ActorHandle], pg: PlacementGroup
-) -> None:
-    for actor in actors:
-        ray.kill(actor)
-    remove_placement_group(pg)
+        # Clean up actors and placement group
+        for actor in actors:
+            ray.kill(actor)
+        remove_placement_group(pg)
 
 
 def run_once_per_gpu(
