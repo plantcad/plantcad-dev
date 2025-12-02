@@ -1,23 +1,37 @@
 # Pipeline configuration for PlantCAD2 zero-shot evaluation tasks
 
 executor:
-  prefix: s3://oa-plantcad-dev/pipelines/_dev_pc2_eval_20251201_r5
+  prefix: s3://oa-plantcad-dev/pipelines/_dev_pc2_eval_20251202_r1
   force_run_failed: true
 
 models:
-  - path: kuleshov-group/PlantCAD2-Small-l24-d0768
-    type: mlm
-    context_length: 8192
-  - path: plantcad/marin_exp1729__pcv1_600m_c512__checkpoints
-    type: clm
-    context_length: 512
-    subfolder: local_store/checkpoints/plantcad-train-600m-r16-a1bc43/hf/step-26782
+  # - path: kuleshov-group/PlantCAD2-Small-l24-d0768
+  #   type: mlm
+  #   context_length: 8192
   - path: kuleshov-group/PlantCaduceus_l20
     type: mlm
     context_length: 512
   - path: kuleshov-group/PlantCaduceus_l32
     type: mlm
     context_length: 512
+  - path: plantcad/marin_exp1729__pcv1_600m_c512__checkpoints
+    type: clm
+    name: marin_llama_plantcad_600m_c512__fwd_rc_avg
+    context_length: 512
+    subfolder: local_store/checkpoints/plantcad-train-600m-r16-a1bc43/hf/step-26782
+    motif_inference_mode: fwd_rc_avg
+  - path: plantcad/marin_exp1729__pcv1_600m_c512__checkpoints
+    type: clm
+    name: marin_llama_plantcad_600m_c512__fwd_only
+    context_length: 512
+    subfolder: local_store/checkpoints/plantcad-train-600m-r16-a1bc43/hf/step-26782
+    motif_inference_mode: fwd_only
+  - path: plantcad/marin_exp1729__pcv1_600m_c512__checkpoints
+    type: clm
+    name: marin_llama_plantcad_600m_c512__rc_only
+    context_length: 512
+    subfolder: local_store/checkpoints/plantcad-train-600m-r16-a1bc43/hf/step-26782
+    motif_inference_mode: rc_only
 
 compute:
   device: cuda

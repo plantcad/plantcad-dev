@@ -43,12 +43,11 @@ class ModelConfig:
         description="Inference mode for motif tasks (only relevant for CLM models)",
     )
 
-    @model_validator(mode="before")
-    @classmethod
-    def set_default_name(cls, data: dict) -> dict:
-        if not data.get("name"):
-            data["name"] = data["path"]
-        return data
+    @model_validator(mode="after")
+    def set_default_name(self) -> Self:
+        if not self.name:
+            self.name = self.path
+        return self
 
 
 # Use kw_only to support required and optional fields in any order

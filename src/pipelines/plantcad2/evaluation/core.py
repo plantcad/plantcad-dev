@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional, Sequence, Tuple, TypeVar
+from typing import Literal, Optional, Sequence, Tuple, TypeVar
 
 import numpy as np
 import pandas as pd
@@ -155,8 +155,9 @@ class MultiMaskDataset(TorchDataset):
         input_ids = enc["input_ids"]
         if input_ids.size(1) <= max(self.mask_idx):
             raise ValueError("mask index out of range")
+        unmasked_ids = input_ids.clone()
         input_ids[0, self.mask_idx] = self.tokenizer.mask_token_id
-        return {"masked_ids": input_ids}
+        return {"masked_ids": input_ids, "unmasked_ids": unmasked_ids}
 
 
 def fetch_task_data(config: TaskConfigT) -> list[dict]:
@@ -321,7 +322,7 @@ def _masked_probs(
     tokenizer : PreTrainedTokenizer
         Tokenizer matching the model
     loader : DataLoader
-        DataLoader providing batches with 'masked_ids' key
+        DataLoader providing batches with 'masked_ids' and 'unmasked_ids' keys
     device : str
         Device for model inference (e.g., 'cuda', 'cpu')
     masks_per_sequence : int
@@ -340,15 +341,19 @@ def _masked_probs(
     idxs = [tokenizer.get_vocab()[n] for n in NUCLEOTIDES_LOWER]
     grouped_probs: list[NDArray[np.floating]] = []
     for batch in tqdm(loader, desc=desc):
-        # cur_ids shape: (batch, seq_len)
-        cur_ids = batch["masked_ids"].to(device).squeeze(1)
-        assert cur_ids.ndim == 2, (
-            f"Expected 2D cur_ids (batch, seq_len), got shape {cur_ids.shape}"
+        masked_ids = batch["masked_ids"].to(device).squeeze(1)
+        unmasked_ids = batch["unmasked_ids"].to(device).squeeze(1)
+        assert masked_ids.ndim == 2, (
+            f"Expected 2D masked_ids (batch, seq_len), got shape {masked_ids.shape}"
         )
-        batch_size = cur_ids.size(0)
+        batch_size = masked_ids.size(0)
+
+        # CLM uses unmasked_ids for inference (needs real tokens for context);
+        # MLM uses masked_ids (mask tokens signal positions to predict)
+        inference_ids = unmasked_ids if model_type == ModelType.clm else masked_ids
 
         with torch.inference_mode():
-            logits = model(input_ids=cur_ids).logits
+            logits = model(input_ids=inference_ids).logits
 
         # logits shape: (batch, seq_len, vocab_size)
         assert logits.ndim == 3, (
@@ -368,8 +373,9 @@ def _masked_probs(
 
         # Transform masked_pos: (batch, seq_len) bool -> (batch, seq_len, vocab_size)
         # unsqueeze(-1) adds singleton vocab dim, expand replicates it to match logits
+        # Always use masked_ids to identify positions of interest
         masked_pos = (
-            (cur_ids == tokenizer.mask_token_id)
+            (masked_ids == tokenizer.mask_token_id)
             .unsqueeze(-1)
             .expand(-1, -1, shifted_logits.size(-1))
         )
@@ -804,6 +810,7 @@ def average_true_probabilities(
     probs: NDArray[np.floating],
     true_tokens: NDArray[np.str_],
     motif_len: int,
+    agg: Literal["mean", "product"] = "mean",
 ) -> NDArray[np.floating]:
     nuc = np.array(NUCLEOTIDES)
     n = len(true_tokens)
@@ -815,7 +822,13 @@ def average_true_probabilities(
     token_probs = np.zeros(probs.shape[0], dtype=float)
     valid = idxs >= 0
     token_probs[valid] = probs[row_idx[valid], idxs[valid]]
-    return token_probs.reshape(-1, motif_len).mean(axis=1)
+    grouped = token_probs.reshape(-1, motif_len)
+    if agg == "mean":
+        return grouped.mean(axis=1)
+    elif agg == "product":
+        return grouped.prod(axis=1)
+    else:
+        raise ValueError(f"Unsupported aggregation method: {agg}")
 
 
 # =============================================================================

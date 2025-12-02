@@ -209,7 +209,7 @@ class EvaluationPipeline:
             task_config = step.config
             result_row = {
                 "dataset": task_config.repo_id,
-                "model": task_config.model_path,
+                "model": task_config.model_name,
                 "task": task_config.task,
                 "split": task_config.split,
                 **metrics,
