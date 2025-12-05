@@ -132,10 +132,11 @@ python -m src.pipelines.plantcad2.evaluation.pipeline --config_path $CONFIG
 python -m src.pipelines.plantcad2.evaluation.pipeline \
   --config_path $CONFIG --executor.force_run_failed true
 
-# Run the pipeline without "simulation mode" (requires a GPU when false)
+# Set arbitrary config properties in addition to those
+# for the executor (e.g. `force_run_failed`)
 python -m src.pipelines.plantcad2.evaluation.pipeline \
   --config_path $CONFIG \
-  --tasks.evolutionary_constraint.generate_logits.simulate_mode false \
+  --sampling.max_size=1000 \
   --executor.force_run_failed true
 ```
 
@@ -206,7 +207,7 @@ sky exec pc-dev $CONFIG_PATH/task.sky.yaml \
   --num-nodes $NUM_NODES --env HUGGING_FACE_HUB_TOKEN
 
 # Add arbitrary arguments to the task execution
-ARGS="--tasks.evolutionary_constraint.downsample_dataset.sample_size=1000" \
+ARGS="--sampling.max_size=1000" \
 sky exec pc-dev $CONFIG_PATH/task.sky.yaml \
   --num-nodes $NUM_NODES --env HUGGING_FACE_HUB_TOKEN --env ARGS
 ```
@@ -426,7 +427,7 @@ hf repo-files delete --repo-type dataset plantcad/_dev_pc2_eval evolutionary_dow
 
 These commands demonstrate how to configure AWS S3 access on remote dev VMs.  For more details, see https://github.com/plantcad/plantcad-dev/pull/30.
 
-```
+```bash
 # On local host
 # Install AWS CLI: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
 aws configure
@@ -474,6 +475,29 @@ SkyPilot sets different environment variables about cluster nodes for the `setup
 In this context, it is worth noting that the `SKYPILOT_NODE_IPS` list available to `run` does not contain all cluster hosts.  It contains only those allocated for the task according to `num_nodes`.  This means that the Ray head node cannot be determined from this variable if all nodes are not used by the task.  If a subset of nodes is used, then `SKYPILOT_NODE_RANK` may be 0 on a worker node (depending on what nodes were chosen).  This contradicts the behavior documented at https://docs.skypilot.co/en/v0.5.0/reference/yaml-spec.html, which clearly implies that the head node should always be included: "Number of nodes (optional; defaults to 1) to launch including the head node".
 
 By contrast, `SKYPILOT_SETUP_NODE_IPS` contains all cluster hosts, so the Ray head node can always be determined from this variable.
+
+## Pipelines
+
+### PlantCAD2 Evaluation Execution
+
+For convenience, here are commands used previously to launch and run a PlantCAD2 evaluation at scale:
+
+```bash
+sky launch -c pc-dev configs/skypilot/cluster.sky.yaml --gpus H100:8 --num-nodes 3 \
+  --env HUGGING_FACE_HUB_TOKEN \
+  --env AWS_ACCESS_KEY_ID \
+  --env AWS_SECRET_ACCESS_KEY \
+  --env AWS_SESSION_TOKEN
+
+TASK_MODULE=src.pipelines.plantcad2.evaluation.pipeline \
+TASK_CONFIG=src/pipelines/plantcad2/evaluation/config.yaml \
+RAY_DEDUP_LOGS=0 \
+RAY_SCHEDULER_EVENTS=0 \
+sky exec pc-dev configs/skypilot/task.sky.yaml \
+    --num-nodes 3 --env HUGGING_FACE_HUB_TOKEN \
+    --env TASK_MODULE --env TASK_CONFIG --env RAY_DEDUP_LOGS \
+    --env AWS_ACCESS_KEY_ID --env AWS_SECRET_ACCESS_KEY --env AWS_SESSION_TOKEN
+```
 
 ## Development
 
