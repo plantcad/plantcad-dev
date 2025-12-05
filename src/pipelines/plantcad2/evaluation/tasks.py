@@ -18,6 +18,7 @@ from src.utils.ray_utils import (
     run_on_exclusive_node,
 )
 from src.pipelines.plantcad2.evaluation.core import (
+    TaskData,
     compute_core_noncore_scores,
     compute_evo_cons_probs,
     compute_motif_probs,
@@ -95,8 +96,12 @@ def _merge_predictions(
     return output_path
 
 
-def _validate_cache_files(cache_results: list[list[dict]]) -> None:
-    sorted_caches = [sorted(c, key=lambda x: x["filename"]) for c in cache_results]
+def _validate_cache_files(cache_results: list[TaskData]) -> None:
+    """Validate that dataset cache files are consistent across all nodes."""
+    sorted_caches = [
+        sorted(r.dataset_cache_files, key=lambda x: x["filename"])
+        for r in cache_results
+    ]
     assert all(sc == sorted_caches[0] for sc in sorted_caches), (
         "Cache files must be identical across all nodes"
     )
@@ -131,8 +136,8 @@ def _generate_results(
     worker: Callable[[TaskConfigT, int, int, str], str],
     output_dir: str,
 ) -> str:
-    # Cache dataset on each node and verify consistency
-    cache_results = run_once_per_node(fetch_task_data, config=config)
+    # Cache dataset/models on each node and verify them
+    cache_results = run_once_per_node(fetch_task_data, num_gpus=1, config=config)
     _validate_cache_files(cache_results)
 
     # Launch workers to run inference, defaulting to as

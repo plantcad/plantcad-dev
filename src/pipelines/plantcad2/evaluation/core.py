@@ -19,7 +19,9 @@ from transformers import (
     PreTrainedTokenizer,
 )
 from tqdm import tqdm
+from upath import UPath
 
+from src.io.api import resolve_local_path
 from src.pipelines.plantcad2.evaluation.config import (
     CoreNonCoreTaskConfig,
     EvoConsTaskConfig,
@@ -101,6 +103,51 @@ MODEL_TYPE_TO_CLASS: dict[ModelType, type[PreTrainedModel]] = {
 }
 
 
+def _resolve_model_path(model_path: str) -> str | None:
+    """Resolve model path to local filesystem path if possible.
+
+    Returns the local path for local paths or HF repo IDs, None for remote paths.
+    """
+    upath = UPath(model_path)
+    if not upath.protocol:
+        # Path is for local filesystem or HF repo id
+        return model_path
+    if upath.protocol == "file":
+        # Path is local fsspec url beginning with file://
+        return upath.path
+    # Path cannot be resolved to the local filesystem
+    return None
+
+
+def _is_remote_model_path(model_path: str) -> bool:
+    """Check if model path is a remote path that needs downloading."""
+    return _resolve_model_path(model_path) is None
+
+
+def _download_model_checkpoint(model_path: str) -> str:
+    """Download a remote model checkpoint to local cache if not already cached.
+
+    This should be called once per node before workers start to avoid
+    race conditions on the local filesystem.
+
+    Parameters
+    ----------
+    model_path : str
+        Remote model path (e.g., gs://bucket/path or s3://bucket/path)
+
+    Returns
+    -------
+    str
+        Local path to the downloaded model checkpoint
+    """
+    logger.info(f"Downloading remote model checkpoint: {model_path}")
+    local_path = str(
+        resolve_local_path(UPath(model_path), kind="directory", force=False)
+    )
+    logger.info(f"Model checkpoint at: {local_path}")
+    return local_path
+
+
 def _load_model(
     model_path: str, device: str, model_type: ModelType, subfolder: str = ""
 ) -> Tuple[PreTrainedModel, PreTrainedTokenizer]:
@@ -111,13 +158,25 @@ def _load_model(
     logger.info(
         f"Loading {model_type.upper()} model {model_path} with {dtype=}, {device=}"
     )
+
+    # Resolve to local path - remote models should have been pre-downloaded
+    # before workers start
+    local_path = _resolve_model_path(model_path)
+    if local_path is None:
+        # For remote paths, resolve to cached local path (should already exist)
+        # Use force=False to avoid re-downloading if already cached
+        local_path = str(
+            resolve_local_path(UPath(model_path), kind="directory", force=False)
+        )
+        logger.info(f"Using cached model checkpoint at: {local_path}")
+
     model = model_cls.from_pretrained(
-        model_path, subfolder=subfolder, trust_remote_code=True, torch_dtype=dtype
+        local_path, subfolder=subfolder, trust_remote_code=True, torch_dtype=dtype
     )
     model = model.to(device=device, dtype=dtype)
     model.eval()
     tokenizer = AutoTokenizer.from_pretrained(
-        model_path, subfolder=subfolder, trust_remote_code=True
+        local_path, subfolder=subfolder, trust_remote_code=True
     )
     return model, tokenizer
 
@@ -160,18 +219,69 @@ class MultiMaskDataset(TorchDataset):
         return {"masked_ids": input_ids, "unmasked_ids": unmasked_ids}
 
 
-def fetch_task_data(config: TaskConfigT) -> list[dict]:
+@dataclass
+class TaskData:
+    """Pre-fetched task data containing cached file info."""
+
+    dataset_cache_files: list[dict]
+    model_cache_path: str | None
+
+
+def fetch_task_data(config: TaskConfigT) -> TaskData:
+    """Pre-fetch task data and model checkpoint to local cache.
+
+    This function runs once per node before workers start to avoid
+    unnecessary cloud storage I/O and potential local filesystem race
+    conditions between workers on the same nodes.
+
+    Parameters
+    ----------
+    config : TaskConfigT
+        Task configuration containing dataset and model info
+
+    Returns
+    -------
+    TaskData
+        Contains dataset cache file info and local model path (if downloaded)
+    """
+    task_desc = f"[task={config.task}, split={config.split}]"
+
+    # Pre-fetch HF dataset to local cache
     logger.info(
-        f"[task={config.task}, split={config.split}] Pre-fetching HF task data from repository {config.repo_id} ..."
+        f"{task_desc} Pre-fetching HF task data from repository {config.repo_id} ..."
     )
     dataset = load_hf_dataset(config.repo_id, config.task, split=config.split)
     assert isinstance(dataset, Dataset)
-    result = dataset.cache_files
     logger.info(
-        f"[task={config.task}, split={config.split}] Pre-fetched {len(dataset)} examples "
+        f"{task_desc} Pre-fetched {len(dataset)} examples "
         f"from repository {config.repo_id} to local cache:\n{dataset.cache_files}"
     )
-    return result
+
+    # Pre-download remote model checkpoint to local cache
+    model_cache_path: str | None = None
+    if _is_remote_model_path(config.model_path):
+        logger.info(
+            f"{task_desc} Pre-downloading remote model checkpoint: {config.model_path}"
+        )
+        model_cache_path = _download_model_checkpoint(config.model_path)
+        logger.info(f"{task_desc} Model checkpoint cached at: {model_cache_path}")
+    else:
+        model_cache_path = config.model_path
+
+    # Verify model can be loaded, which will trigger a download if not already cached
+    logger.info(f"{task_desc} Verifying model at: {model_cache_path}")
+    _load_model(
+        model_cache_path,
+        device=config.device,
+        model_type=config.model_type,
+        subfolder=config.model_subfolder,
+    )
+    logger.info(f"{task_desc} Successfully verified model")
+
+    return TaskData(
+        dataset_cache_files=dataset.cache_files,
+        model_cache_path=model_cache_path,
+    )
 
 
 def center_crop_sequences(
@@ -560,6 +670,7 @@ def _compute_clm_probs_for_positions(
             raise AssertionError(
                 f"Forward and RC prob shape mismatch: {fwd_probs.shape} != {rc_probs.shape}"
             )
+        # TODO: average logits or renormalize
         probs = (fwd_probs + _flip_rc_probs(rc_probs)) / 2
     else:
         raise ValueError(f"Unsupported motif inference mode: {mode}")
@@ -810,7 +921,7 @@ def average_true_probabilities(
     probs: NDArray[np.floating],
     true_tokens: NDArray[np.str_],
     motif_len: int,
-    agg: Literal["mean", "product"] = "mean",
+    agg: Literal["mean", "product"] = "product",
 ) -> NDArray[np.floating]:
     nuc = np.array(NUCLEOTIDES)
     n = len(true_tokens)

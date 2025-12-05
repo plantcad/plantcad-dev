@@ -9,54 +9,18 @@ import logging
 import pandas as pd
 import xarray as xr
 
-from src.io.hf import (
-    download_hf_file,
-    download_hf_folder,
-    initialize_hf_path,
-    upload_hf_file,
-    upload_hf_folder,
+from src.io.fs import (
+    download_file,
+    download_folder,
+    resolve_path,
+    upload_file,
+    upload_folder,
 )
-from src.io.s3 import (
-    download_s3_file,
-    download_s3_folder,
-    upload_s3_file,
-    upload_s3_folder,
-)
+from src.io.hf import initialize_hf_path
 
 T = TypeVar("T")
 
 logger = logging.getLogger("ray")
-
-
-def resolve_path(path: str | Path | UPath) -> UPath:
-    """Resolve a path to a UPath with validation for supported protocols.
-
-    Parameters
-    ----------
-    path : str | Path | UPath
-        Path to resolve
-
-    Returns
-    -------
-    UPath
-        Resolved UPath with validated protocol
-
-    Raises
-    ------
-    NotImplementedError
-        If protocol is not 'file', 'hf', or 's3'
-    """
-    if not isinstance(path, UPath):
-        path = UPath(path)
-
-    # Handle empty protocol by resolving to absolute file path
-    if path.protocol == "":
-        path = UPath(path.as_uri())
-
-    if path.protocol not in ("file", "hf", "s3"):
-        raise NotImplementedError(f"Protocol '{path.protocol}' not supported")
-
-    return path
 
 
 def resolve_cache_dir(cache_dir: str | Path | None) -> Path:
@@ -155,57 +119,48 @@ def _remove_path(path: Path) -> None:
         shutil.rmtree(path)
 
 
-def _resolve_local_path(
-    upath: UPath, kind: Literal["file", "directory"], cache_dir: Path
+def resolve_local_path(
+    upath: UPath,
+    kind: Literal["file", "directory"],
+    cache_dir: str | Path | None = None,
+    force: bool = True,
 ) -> Path:
-    """Resolve UPath to local path based on protocol."""
-    if upath.protocol == "file":
-        # Local path - convert to Path
-        return Path(upath.path)
-    elif upath.protocol == "hf":
-        if kind == "directory":
-            local_path = download_hf_folder(upath, cache_dir=cache_dir)
-            return Path(local_path)
-        else:
-            local_path = download_hf_file(upath, cache_dir=cache_dir)
-            return Path(local_path)
-    elif upath.protocol == "s3":
-        if kind == "directory":
-            local_path = download_s3_folder(upath, cache_dir=cache_dir)
-            return Path(local_path)
-        else:
-            local_path = download_s3_file(upath, cache_dir=cache_dir)
-            return Path(local_path)
+    """Resolve a UPath to a local path, downloading from remote storage if necessary.
+
+    Parameters
+    ----------
+    upath : UPath
+        Path to resolve
+    kind : Literal["file", "directory"]
+        Type of path being resolved
+    cache_dir : str | Path | None
+        Cache directory for remote downloads; defaults to PIPELINE_CACHE_DIR
+        if set and ~/.cache/pipeline otherwise
+    force : bool
+        If True, always download even if local path exists.
+        If False, skip download if local path already exists.
+
+    Returns
+    -------
+    Path
+        Local filesystem path
+    """
+    resolved_cache_dir = resolve_cache_dir(cache_dir)
+    if kind == "directory":
+        local_path = download_folder(upath, cache_dir=resolved_cache_dir, force=force)
     else:
-        raise NotImplementedError(f"Protocol '{upath.protocol}' not supported")
+        local_path = download_file(upath, cache_dir=resolved_cache_dir, force=force)
+    return Path(local_path)
 
 
 def _upload_local_path(
     local_path: Path, upath: UPath, kind: Literal["file", "directory"]
 ) -> None:
     """Upload local path to remote storage based on protocol."""
-    if upath.protocol == "file":
-        # Local path - copy to destination
-        dest_path = Path(upath.path)
-        if kind == "file":
-            dest_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(local_path, dest_path)
-        else:
-            shutil.copytree(local_path, dest_path, dirs_exist_ok=True)
-    elif upath.protocol == "hf":
-        # HF path - upload
-        if kind == "file":
-            upload_hf_file(local_path, upath)
-        else:
-            upload_hf_folder(local_path, upath)
-    elif upath.protocol == "s3":
-        # S3 path - upload
-        if kind == "file":
-            upload_s3_file(local_path, upath)
-        else:
-            upload_s3_folder(local_path, upath)
+    if kind == "file":
+        upload_file(local_path, upath)
     else:
-        raise NotImplementedError(f"Protocol '{upath.protocol}' not supported")
+        upload_folder(local_path, upath)
 
 
 def read(
@@ -234,7 +189,7 @@ def read(
     """
     upath = resolve_path(path)
     resolved_cache_dir = resolve_cache_dir(cache_dir)
-    local_path = _resolve_local_path(upath, kind, resolved_cache_dir)
+    local_path = resolve_local_path(upath, kind, resolved_cache_dir)
 
     return reader(local_path)
 

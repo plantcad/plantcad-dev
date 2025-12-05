@@ -1,0 +1,71 @@
+# Pipeline configuration for https://github.com/plantcad/plantcad-dev/pull/36
+
+executor:
+  prefix: s3://oa-plantcad-dev/pipelines/_dev_pc2_eval_20251205_r2
+  force_run_failed: true
+
+models:
+  - path: gs://marin-dna-us-central1/checkpoints/plantcad_isoflop_01-A_qwen-F3.3e+17-P25M-T3.3B-S6234-B128-9065db/hf/step-6233
+    type: clm
+    name: marin_plantcad_qwen_F3.3e+17_P25M_T3.3B
+    context_length: 512
+    motif_inference_mode: fwd_rc_avg
+  - path: gs://marin-dna-us-central1/checkpoints/plantcad_isoflop_01-A_qwen-F1.0e+17-P25M-T990M-S7556-B32-195c20/hf/step-7555
+    type: clm
+    name: marin_plantcad_qwen_F1.0e+17_P25M_T990M
+    context_length: 512
+    motif_inference_mode: fwd_rc_avg
+  - path: gs://marin-dna-us-central1/checkpoints/plantcad_isoflop_01-A_qwen-F6.6e+16-P25M-T653M-S4987-B32-bf99d2/hf/step-4986
+    type: clm
+    name: marin_plantcad_qwen_F6.6e+16_P25M_T653M
+    context_length: 512
+    motif_inference_mode: fwd_rc_avg
+  - path: gs://marin-dna-us-central1/checkpoints/plantcad_isoflop_01-A_qwen-F3.3e+16-P9.4M-T746M-S5697-B32-d9e5f5/hf/step-5696
+    type: clm
+    name: marin_plantcad_qwen_F3.3e+16_P9.4M_T746M
+    context_length: 512
+    motif_inference_mode: fwd_rc_avg
+
+compute:
+  device: cuda
+  batch_size: 48
+  num_workers: null  # Auto-detect from available GPUs
+
+sampling:
+  rate: 1.0  # Shuffle without downsampling
+  max_size: 5000
+  seed: 42
+
+# Dataset splits to evaluate (task+split combinations)
+splits:
+  # Acceptor splice site tasks
+  - task: acceptor_core_noncore_classification
+    split: test_maize
+  - task: acceptor_recovery
+    split: test_maize
+
+  # Conservation tasks
+  - task: conservation_within_poaceae_non_tis
+    split: test
+  - task: conservation_within_andropogoneae
+    split: test
+  - task: conservation_within_poaceae_tis
+    split: test
+
+  # Donor splice site tasks
+  - task: donor_core_noncore_classification
+    split: test_maize
+  - task: donor_recovery
+    split: test_maize
+
+  # # Translation initiation site (TIS) tasks
+  - task: tis_core_noncore_classification
+    split: test_maize
+  - task: tis_recovery
+    split: test_maize
+
+  # # Translation termination site (TTS) tasks
+  - task: tts_core_noncore_classification
+    split: test_maize
+  - task: tts_recovery
+    split: test_maize
