@@ -483,7 +483,6 @@ def _masked_probs(
 
         # Transform masked_pos: (batch, seq_len) bool -> (batch, seq_len, vocab_size)
         # unsqueeze(-1) adds singleton vocab dim, expand replicates it to match logits
-        # Always use masked_ids to identify positions of interest
         masked_pos = (
             (masked_ids == tokenizer.mask_token_id)
             .unsqueeze(-1)
