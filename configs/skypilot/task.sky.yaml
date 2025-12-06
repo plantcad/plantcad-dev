@@ -12,12 +12,14 @@ name: plantcad-dev-task
 envs:
   RAY_GCS_PORT: 6479
   RAY_DEDUP_LOGS: 1
+  RAY_DEBUG: "legacy"
   TASK_MODULE: "src.pipelines.plantcad2.evaluation.pipeline"
-  TASK_CONFIG: "src/pipelines/plantcad2/evaluation/config.yaml"
+  TASK_CONFIG: "configs/pipelines/plantcad2/evaluation/config.yaml"
   TASK_ARGS: ""
   AWS_ACCESS_KEY_ID: ""
   AWS_SECRET_ACCESS_KEY: ""
   AWS_SESSION_TOKEN: ""
+  GOOGLE_APPLICATION_CREDENTIALS: ""
 
 workdir: .
 
@@ -60,10 +62,12 @@ run: |
       HOME="$HOME" \
       RAY_DEDUP_LOGS="$RAY_DEDUP_LOGS" \
       RAY_ADDRESS="$RAY_GCS_ADDRESS" \
+      RAY_DEBUG="$RAY_DEBUG" \
       HUGGING_FACE_HUB_TOKEN="$HUGGING_FACE_HUB_TOKEN" \
       AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
       AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
       AWS_SESSION_TOKEN="$AWS_SESSION_TOKEN" \
+      GOOGLE_APPLICATION_CREDENTIALS="$GOOGLE_APPLICATION_CREDENTIALS" \
       bash -c "source .venv/bin/activate && python -m ${TASK_MODULE} \
         --config_path ${TASK_CONFIG} \
         ${TASK_ARGS}"

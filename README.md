@@ -490,7 +490,7 @@ sky launch -c pc-dev configs/skypilot/cluster.sky.yaml --gpus H100:8 --num-nodes
   --env AWS_SESSION_TOKEN
 
 TASK_MODULE=src.pipelines.plantcad2.evaluation.pipeline \
-TASK_CONFIG=src/pipelines/plantcad2/evaluation/config.yaml \
+TASK_CONFIG=configs/pipelines/plantcad2/evaluation/config.yaml \
 RAY_DEDUP_LOGS=0 \
 RAY_SCHEDULER_EVENTS=0 \
 sky exec pc-dev configs/skypilot/task.sky.yaml \
