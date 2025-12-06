@@ -137,7 +137,7 @@ def _generate_results(
     output_dir: str,
 ) -> str:
     # Cache dataset/models on each node and verify them
-    cache_results = run_once_per_node(fetch_task_data, num_gpus=1, config=config)
+    cache_results = run_once_per_node(fetch_task_data, config=config)
     _validate_cache_files(cache_results)
 
     # Launch workers to run inference, defaulting to as

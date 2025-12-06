@@ -6,14 +6,11 @@ envs:
   AWS_ACCESS_KEY_ID: ""
   AWS_SECRET_ACCESS_KEY: ""
   AWS_SESSION_TOKEN: ""
-  GOOGLE_APPLICATION_CREDENTIALS: ""
+  # Set via: export GCS_CREDENTIALS=$(base64 < "$GOOGLE_APPLICATION_CREDENTIALS") in local env
+  GCS_CREDENTIALS: ""
   RAY_DEBUG: "legacy"
 
 workdir: .
-
-file_mounts:
-  # Upload GCS credentials file if GOOGLE_APPLICATION_CREDENTIALS is set
-  ~/.config/gcloud/application_default_credentials.json: ${GOOGLE_APPLICATION_CREDENTIALS}
 
 setup: |
   set -e
@@ -62,8 +59,10 @@ setup: |
     fi
   done
 
-  # Set GCS credentials path if file was uploaded
-  if [ -f ~/.config/gcloud/application_default_credentials.json ]; then
+  # Write GCS credentials file if provided
+  if [ -n "$GCS_CREDENTIALS" ]; then
+    mkdir -p ~/.config/gcloud
+    echo "$GCS_CREDENTIALS" | base64 -d > ~/.config/gcloud/application_default_credentials.json
     echo "GOOGLE_APPLICATION_CREDENTIALS=$HOME/.config/gcloud/application_default_credentials.json" >> ~/.env
   fi
 
@@ -85,9 +84,9 @@ setup: |
     <<< "$SKYPILOT_CLUSTER_INFO" \
   )
 
-  # Set GCS credentials path for Ray if file was uploaded
+  # Set GCS credentials path for Ray if provided
   GCS_CREDS_PATH=""
-  if [ -f ~/.config/gcloud/application_default_credentials.json ]; then
+  if [ -n "$GCS_CREDENTIALS" ]; then
     GCS_CREDS_PATH="$HOME/.config/gcloud/application_default_credentials.json"
   fi
 

@@ -1,7 +1,7 @@
 """Generic filesystem operations with backend-specific optimizations.
 
-This module provides a unified interface for file operations across different
-storage backends (local, S3, HuggingFace). It delegates to backend-specific
+This module provides a unified interface for file operations across any
+fsspec-compatible storage backend. It delegates to backend-specific
 implementations where appropriate for optimal performance.
 """
 

@@ -19,7 +19,7 @@ envs:
   AWS_ACCESS_KEY_ID: ""
   AWS_SECRET_ACCESS_KEY: ""
   AWS_SESSION_TOKEN: ""
-  GOOGLE_APPLICATION_CREDENTIALS: ""
+  GCS_CREDENTIALS: ""
 
 workdir: .
 
@@ -57,6 +57,12 @@ run: |
 
     echo "RAY_GCS_ADDRESS: $RAY_GCS_ADDRESS"
 
+    # Set GCS credentials path if GCS_CREDENTIALS was provided
+    GCS_CREDS_PATH=""
+    if [ -n "$GCS_CREDENTIALS" ]; then
+      GCS_CREDS_PATH="$HOME/.config/gcloud/application_default_credentials.json"
+    fi
+
     # Execute the pipeline in sanitized environment
     env -i \
       HOME="$HOME" \
@@ -67,7 +73,7 @@ run: |
       AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
       AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
       AWS_SESSION_TOKEN="$AWS_SESSION_TOKEN" \
-      GOOGLE_APPLICATION_CREDENTIALS="$GOOGLE_APPLICATION_CREDENTIALS" \
+      GOOGLE_APPLICATION_CREDENTIALS="$GCS_CREDS_PATH" \
       bash -c "source .venv/bin/activate && python -m ${TASK_MODULE} \
         --config_path ${TASK_CONFIG} \
         ${TASK_ARGS}"

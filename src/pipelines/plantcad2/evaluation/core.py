@@ -272,7 +272,7 @@ def fetch_task_data(config: TaskConfigT) -> TaskData:
     logger.info(f"{task_desc} Verifying model at: {model_cache_path}")
     _load_model(
         model_cache_path,
-        device=config.device,
+        device="cpu",
         model_type=config.model_type,
         subfolder=config.model_subfolder,
     )
