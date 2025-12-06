@@ -6,6 +6,9 @@ envs:
   AWS_ACCESS_KEY_ID: ""
   AWS_SECRET_ACCESS_KEY: ""
   AWS_SESSION_TOKEN: ""
+  # Set via: export GCS_CREDENTIALS=$(base64 < "$GOOGLE_APPLICATION_CREDENTIALS") in local env
+  GCS_CREDENTIALS: ""
+  RAY_DEBUG: "legacy"
 
 workdir: .
 
@@ -56,6 +59,13 @@ setup: |
     fi
   done
 
+  # Write GCS credentials file if provided
+  if [ -n "$GCS_CREDENTIALS" ]; then
+    mkdir -p ~/.config/gcloud
+    echo "$GCS_CREDENTIALS" | base64 -d > ~/.config/gcloud/application_default_credentials.json
+    echo "GOOGLE_APPLICATION_CREDENTIALS=$HOME/.config/gcloud/application_default_credentials.json" >> ~/.env
+  fi
+
   # Source ~/.env on login
   if ! grep -q "set -a; source ~/.env; set +a" ~/.bashrc; then
     echo "set -a; source ~/.env; set +a" >> ~/.bashrc
@@ -74,14 +84,22 @@ setup: |
     <<< "$SKYPILOT_CLUSTER_INFO" \
   )
 
+  # Set GCS credentials path for Ray if provided
+  GCS_CREDS_PATH=""
+  if [ -n "$GCS_CREDENTIALS" ]; then
+    GCS_CREDS_PATH="$HOME/.config/gcloud/application_default_credentials.json"
+  fi
+
   # Initialize Ray cluster in sanitized environment
   env -i \
     HOME="$HOME" \
     RAY_SETUP_HEAD_NODE_IP="$RAY_SETUP_HEAD_NODE_IP" \
     RAY_SETUP_NODE_RANK="$SKYPILOT_SETUP_NODE_RANK" \
     RAY_SETUP_CLUSTER_NAME="$RAY_SETUP_CLUSTER_NAME" \
+    RAY_DEBUG="$RAY_DEBUG" \
     HUGGING_FACE_HUB_TOKEN="$HUGGING_FACE_HUB_TOKEN" \
     AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
     AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
     AWS_SESSION_TOKEN="$AWS_SESSION_TOKEN" \
+    GOOGLE_APPLICATION_CREDENTIALS="$GCS_CREDS_PATH" \
     bash --login scripts/ray_init.sh

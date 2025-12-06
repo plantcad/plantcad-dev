@@ -463,6 +463,22 @@ aws s3 rm --recursive s3://oa-plantcad-dev/pipelines/pc2_eval_20251114_r1
 
 Ad-hoc writes and reads to S3 from Python can be done the same way as the `UPath` examples for Hugging Face above.  If `UPath` is not sufficient for some use-case, the [s3fs](https://s3fs.readthedocs.io/en/latest/index.html) library can also be used directly.
 
+### Google Cloud Storage
+
+#### Setup
+
+To use GCS on remote clusters, export base64-encoded credentials before launching:
+
+```bash
+# On local host
+export GCS_CREDENTIALS=$(base64 < "$GOOGLE_APPLICATION_CREDENTIALS")
+
+# Launch a cluster with GCS access
+sky launch -c pc-dev configs/skypilot/cluster.sky.yaml --num-nodes 1 \
+  --env HUGGING_FACE_HUB_TOKEN \
+  --env GCS_CREDENTIALS
+```
+
 ## SkyPilot
 
 ### Environment variables
@@ -487,16 +503,18 @@ sky launch -c pc-dev configs/skypilot/cluster.sky.yaml --gpus H100:8 --num-nodes
   --env HUGGING_FACE_HUB_TOKEN \
   --env AWS_ACCESS_KEY_ID \
   --env AWS_SECRET_ACCESS_KEY \
-  --env AWS_SESSION_TOKEN
+  --env AWS_SESSION_TOKEN \
+  --env GCS_CREDENTIALS
 
 TASK_MODULE=src.pipelines.plantcad2.evaluation.pipeline \
-TASK_CONFIG=src/pipelines/plantcad2/evaluation/config.yaml \
+TASK_CONFIG=configs/pipelines/plantcad2/evaluation/config.yaml \
 RAY_DEDUP_LOGS=0 \
 RAY_SCHEDULER_EVENTS=0 \
 sky exec pc-dev configs/skypilot/task.sky.yaml \
     --num-nodes 3 --env HUGGING_FACE_HUB_TOKEN \
     --env TASK_MODULE --env TASK_CONFIG --env RAY_DEDUP_LOGS \
-    --env AWS_ACCESS_KEY_ID --env AWS_SECRET_ACCESS_KEY --env AWS_SESSION_TOKEN
+    --env AWS_ACCESS_KEY_ID --env AWS_SECRET_ACCESS_KEY --env AWS_SESSION_TOKEN \
+    --env GCS_CREDENTIALS
 ```
 
 ## Development

@@ -101,6 +101,7 @@ class NodeFunctionExecutor:
 def run_once_per_node(
     func: Callable[..., T],
     num_cpus: int = 1,
+    num_gpus: int = 0,
     options: dict[str, Any] | None = None,
     *args: Any,
     **kwargs: Any,
@@ -114,7 +115,9 @@ def run_once_per_node(
     func : Callable[..., T]
         Function to execute on each node
     num_cpus : int, default=1
-        Number of CPUs to allocate per node for the placement group (not the actor)
+        Number of CPUs to allocate per node for the placement group
+    num_gpus : int, default=0
+        Number of GPUs to allocate per node for the placement group
     options : dict[str, Any] | None, optional
         Options to pass to ActorClass.options(). See:
         https://docs.ray.io/en/latest/ray-core/api/doc/ray.actor.ActorClass.options.html
@@ -129,13 +132,28 @@ def run_once_per_node(
     list[T]
         List of results from executing the function on each node
     """
+    # Validate options don't conflict with explicit resource arguments
+    if options is not None:
+        if "num_cpus" in options:
+            raise ValueError("num_cpus cannot be set in options; use num_cpus argument")
+        if "num_gpus" in options:
+            raise ValueError("num_gpus cannot be set in options; use num_gpus argument")
+
     num_nodes = num_cluster_nodes()
-    bundles = [{"CPU": num_cpus} for _ in range(num_nodes)]
+    bundle: dict[str, int] = {"CPU": num_cpus}
+    if num_gpus > 0:
+        bundle["GPU"] = num_gpus
+    bundles = [bundle for _ in range(num_nodes)]
     pg = placement_group(bundles=bundles, strategy="STRICT_SPREAD")
     ray.get(pg.ready())
 
     # Create one actor per node, each bound to a different bundle in the placement group
-    opts = {**(options or {}), "placement_group": pg}
+    opts: dict[str, Any] = {
+        **(options or {}),
+        "placement_group": pg,
+        "num_cpus": num_cpus,
+        "num_gpus": num_gpus,
+    }
     actors = [
         # pyrefly: ignore[missing-attribute]
         NodeFunctionExecutor.options(
