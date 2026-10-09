@@ -1,0 +1,7 @@
+default-storage-provider: s3
+default-storage-prefix: s3://oa-plantcad-dev/snakemake/maize_missense_prediction/v1
+cores: 8
+jobs: 1
+software-deployment-method: conda
+printshellcmds: true
+rerun-incomplete: true

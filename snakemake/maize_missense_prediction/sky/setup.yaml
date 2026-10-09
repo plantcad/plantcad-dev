@@ -1,0 +1,26 @@
+name: maize-missense-setup
+workdir: snakemake/maize_missense_prediction
+resources:
+  infra: aws
+  cpus: 8+
+  memory: 32+
+  disk_size: 100
+  use_spot: false
+  max_hourly_cost: 0.65
+setup: |
+  set -euo pipefail
+  export PATH="$HOME/.local/bin:$PATH"
+  if [ "$(uv --version 2>/dev/null || true)" != "uv 0.11.31" ]; then
+    curl -LsSf https://astral.sh/uv/0.11.31/install.sh | sh
+  fi
+  if [ ! -x "$HOME/.local/share/maize-missense-conda/bin/conda" ]; then
+    conda create -p "$HOME/.local/share/maize-missense-conda" --override-channels -c conda-forge conda=25.7.0 -y -q
+  fi
+  export PATH="$HOME/.local/share/maize-missense-conda/bin:$PATH"
+  conda config --set channel_priority strict
+  conda --version
+run: |
+  set -euo pipefail
+  export PATH="$HOME/.local/bin:$PATH"
+  uv lock
+  uv sync --locked

@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "plantcad-maize-missense"
+version = "0.1.0"
+description = "CPU-only genomic prediction from precomputed missense variant scores"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "huggingface-hub>=0.34,<2",
+  "liftover>=1.3,<2",
+  "matplotlib>=3.10,<4",
+  "numpy>=2,<3",
+  "polars>=1.32,<2",
+  "pyarrow>=21,<24",
+  "pyfaidx>=0.8,<1",
+  "pyyaml>=6,<7",
+  "snakemake>=9,<10",
+  "snakemake-storage-plugin-s3>=0.3.6,<1",
+]
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "ruff>=0.11,<1", "ty", "snakefmt>=0.11,<1", "pre-commit>=4,<5"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/maize_missense"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+extend-select = ["ANN", "I"]
+
+[tool.ty.src]
+include = ["src", "tests"]

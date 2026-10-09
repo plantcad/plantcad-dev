@@ -1,0 +1,10 @@
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-base=4.4
+  - r-qgg
+  - r-arrow
+  - r-jsonlite
+  - r-testthat
+  - bioconductor-snprelate

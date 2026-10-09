@@ -1,0 +1,546 @@
+from pathlib import Path
+from maize_missense.data import (
+    download_hf,
+    download_url,
+    map_genotypes,
+    prepare_scores,
+    source_digest,
+)
+from maize_missense.weights import make_weights
+from maize_missense.report import summarize
+from maize_missense.plots import plot_results
+from maize_missense.uncertainty import write_uncertainty
+from maize_missense.controls import make_control_weights, plan_controls, control_inputs
+from maize_missense.planning import (
+    evaluation_inputs,
+    plan_evaluations,
+    relabel_evaluation,
+)
+from snakemake.iocontainers import Wildcards
+
+
+configfile: "config/config.yaml"
+
+
+MODELS = list(config["models"])
+FRACTIONS = [str(q) for q in config["fractions"]]
+SHUFFLE_SEEDS = [str(seed) for seed in config["controls"]["shuffle_seeds"]]
+SHUFFLE_MODELS = config["controls"]["shuffle_models"]
+assert set(SHUFFLE_MODELS) <= set(MODELS)
+CONTROL_SETTINGS = ["all_missense"] + expand(
+    "shuffle/{model}/{fraction}/seed_{seed}",
+    model=SHUFFLE_MODELS,
+    fraction=FRACTIONS,
+    seed=SHUFFLE_SEEDS,
+)
+CONTROL_CODE = source_digest(
+    "src/maize_missense/controls.py",
+    "src/maize_missense/weights.py",
+    "src/maize_missense/data.py",
+)
+DATA_CODE = source_digest("src/maize_missense/data.py")
+WEIGHTS_CODE = source_digest(
+    "src/maize_missense/weights.py", "src/maize_missense/data.py"
+)
+REPORT_CODE = source_digest(
+    "src/maize_missense/report.py", "src/maize_missense/data.py"
+)
+PLOT_CODE = source_digest("src/maize_missense/plots.py", "src/maize_missense/data.py")
+UNCERTAINTY_CODE = source_digest(
+    "src/maize_missense/uncertainty.py",
+    "src/maize_missense/plots.py",
+    "src/maize_missense/data.py",
+)
+EXTRACT_CODE = source_digest("src/r/genotypes.R", "workflow/scripts/extract_gds.R")
+KERNEL_CODE = source_digest("src/r/genotypes.R", "workflow/scripts/build_kernel.R")
+EVALUATION_CODE = source_digest("src/r/evaluation.R", "workflow/scripts/evaluate.R")
+PLANNING_CODE = source_digest(
+    "src/maize_missense/planning.py", "src/maize_missense/data.py"
+)
+METRICS = (
+    ["results/evaluation/baseline/metrics.parquet"]
+    + expand(
+        "results/evaluation/{model}/{fraction}/metrics.parquet",
+        model=MODELS,
+        fraction=FRACTIONS,
+    )
+    + expand(
+        "results/controls/evaluation/{setting}/metrics.parquet",
+        setting=CONTROL_SETTINGS,
+    )
+)
+PLOTS = ["results/plots/prediction_summary.svg", "results/plots/plot_data.parquet"]
+PREDICTIONS = [
+    path.replace("metrics.parquet", "predictions.parquet") for path in METRICS
+]
+
+
+rule all:
+    input:
+        "results/summary/metrics.parquet",
+        "results/summary/metrics.csv",
+        "results/summary/report.json",
+        PLOTS,
+
+
+rule prepare:
+    input:
+        "results/variants/evaluation.parquet",
+        "results/qc/score_coverage.json",
+        "results/qc/genotype_coverage.json",
+        "results/qc/evaluation_plan.json",
+        expand(
+            "results/weights/{model}/{fraction}.json", model=MODELS, fraction=FRACTIONS
+        ),
+
+
+rule prepare_controls:
+    input:
+        "results/qc/control_plan.json",
+
+
+rule download_scores:
+    output:
+        "results/inputs/scores.parquet",
+    params:
+        source=config["inputs"]["scores"],
+        code=DATA_CODE,
+    run:
+        source = params.source
+        download_hf(source["repo"], source["revision"], source["file"], output[0])
+
+
+rule download_annotations:
+    output:
+        "results/inputs/annotations/{split}.parquet",
+    params:
+        source=config["inputs"]["annotations"],
+        code=DATA_CODE,
+    wildcard_constraints:
+        split="validation|test",
+    run:
+        source = params.source
+        filename = f"full/{wildcards.split}.parquet"
+        assert filename in source["files"]
+        download_hf(source["repo"], source["revision"], filename, output[0])
+
+
+rule download_hybrids:
+    output:
+        "results/inputs/{file}",
+    params:
+        source=config["inputs"]["hybrids"],
+        code=DATA_CODE,
+    wildcard_constraints:
+        file="(?:hybrids/(?:G\\.rds|Q\\.rds|AGPv4_hybrids\\.gds)|(?:NAM_H|Ames_H)/pheno\\.rds)",
+    run:
+        source = params.source
+        download_hf(source["repo"], source["revision"], wildcards.file, output[0])
+
+
+rule download_chain:
+    output:
+        "results/inputs/v4_to_v5.chain",
+    params:
+        url=config["inputs"]["chain_url"],
+        code=DATA_CODE,
+    run:
+        download_url(params.url, output[0])
+
+
+rule download_genome:
+    output:
+        "results/inputs/v5.fa",
+    params:
+        url=config["inputs"]["genome_url"],
+        code=DATA_CODE,
+    run:
+        download_url(params.url, output[0], decompress=True)
+
+
+rule prepare_missense_scores:
+    input:
+        scores="results/inputs/scores.parquet",
+        annotations=expand(
+            "results/inputs/annotations/{split}.parquet", split=["validation", "test"]
+        ),
+    output:
+        scores="results/variants/missense_scores.parquet",
+        report="results/qc/score_coverage.json",
+    params:
+        sources=config["inputs"],
+        code=DATA_CODE,
+    resources:
+        mem_mb=8000,
+    run:
+        prepare_scores(
+            input.annotations,
+            input.scores,
+            output.scores,
+            output.report,
+            params.sources,
+        )
+
+
+rule extract_gds_metadata:
+    input:
+        "results/inputs/hybrids/AGPv4_hybrids.gds",
+    output:
+        "results/variants/gds_v4.tsv.gz",
+    params:
+        code=EXTRACT_CODE,
+    conda:
+        "envs/r.yaml"
+    resources:
+        mem_mb=2000,
+    shell:
+        "Rscript workflow/scripts/extract_gds.R {input:q} {output:q}"
+
+
+rule map_genotype_variants:
+    input:
+        metadata="results/variants/gds_v4.tsv.gz",
+        scores="results/variants/missense_scores.parquet",
+        chain="results/inputs/v4_to_v5.chain",
+        genome="results/inputs/v5.fa",
+    output:
+        variants="results/variants/evaluation.parquet",
+        report="results/qc/genotype_coverage.json",
+    params:
+        code=DATA_CODE,
+    resources:
+        mem_mb=8000,
+    run:
+        map_genotypes(
+            input.metadata,
+            input.scores,
+            input.chain,
+            input.genome,
+            output.variants,
+            output.report,
+        )
+
+
+rule make_weights:
+    input:
+        "results/variants/evaluation.parquet",
+    output:
+        weights="results/weights/{model}/{fraction}.parquet",
+        report="results/weights/{model}/{fraction}.json",
+    params:
+        transform=lambda wc: config["models"][wc.model],
+        code=WEIGHTS_CODE,
+    wildcard_constraints:
+        model="|".join(MODELS),
+        fraction="|".join(q.replace(".", r"\.") for q in FRACTIONS),
+    run:
+        make_weights(
+            input[0],
+            output.weights,
+            output.report,
+            wildcards.model,
+            float(wildcards.fraction),
+            params.transform,
+        )
+
+
+rule build_kernel:
+    input:
+        gds="results/inputs/hybrids/AGPv4_hybrids.gds",
+        weights="results/weights/{model}/{fraction}.parquet",
+    output:
+        kernel="results/kernels/{model}/{fraction}.rds",
+        report="results/kernels/{model}/{fraction}.json",
+    params:
+        chunk=config["kernel"]["chunk_size"],
+        scale=str(config["kernel"]["scale_genotypes"]).upper(),
+        code=KERNEL_CODE,
+    conda:
+        "envs/r.yaml"
+    threads: 8
+    resources:
+        mem_mb=16000,
+    shell:
+        "Rscript workflow/scripts/build_kernel.R {input.gds:q} {input.weights:q} "
+        "{output.kernel:q} {output.report:q} {params.chunk} {params.scale}"
+
+
+rule baseline:
+    input:
+        g="results/inputs/hybrids/G.rds",
+        q="results/inputs/hybrids/Q.rds",
+        nam="results/inputs/NAM_H/pheno.rds",
+        ames="results/inputs/Ames_H/pheno.rds",
+    output:
+        metrics="results/evaluation/baseline/metrics.parquet",
+        predictions="results/evaluation/baseline/predictions.parquet",
+        report="results/evaluation/baseline/fit.json",
+    params:
+        code=EVALUATION_CODE,
+        traits=",".join(config["traits"]),
+        maxit=config["evaluation"]["maxit"],
+        tolerance=config["evaluation"]["tolerance"],
+    conda:
+        "envs/r.yaml"
+    threads: 8
+    resources:
+        mem_mb=16000,
+    shell:
+        "Rscript workflow/scripts/evaluate.R {input.g:q} {input.q:q} {input.nam:q} {input.ames:q} "
+        "NONE baseline {output.metrics:q} {output.predictions:q} {output.report:q} "
+        "{params.traits:q} {params.maxit} {params.tolerance}"
+
+
+rule evaluate_unique:
+    input:
+        g="results/inputs/hybrids/G.rds",
+        q="results/inputs/hybrids/Q.rds",
+        nam="results/inputs/NAM_H/pheno.rds",
+        ames="results/inputs/Ames_H/pheno.rds",
+        kernel="results/kernels/{model}/{fraction}.rds",
+    output:
+        metrics="results/evaluation_unique/{model}/{fraction}/metrics.parquet",
+        predictions="results/evaluation_unique/{model}/{fraction}/predictions.parquet",
+        report="results/evaluation_unique/{model}/{fraction}/fit.json",
+    params:
+        code=EVALUATION_CODE,
+        label=lambda wc: f"{wc.model}/soft_top_{wc.fraction}",
+        traits=",".join(config["traits"]),
+        maxit=config["evaluation"]["maxit"],
+        tolerance=config["evaluation"]["tolerance"],
+    conda:
+        "envs/r.yaml"
+    threads: 8
+    resources:
+        mem_mb=16000,
+    shell:
+        "Rscript workflow/scripts/evaluate.R {input.g:q} {input.q:q} {input.nam:q} {input.ames:q} "
+        "{input.kernel:q} {params.label:q} {output.metrics:q} {output.predictions:q} {output.report:q} "
+        "{params.traits:q} {params.maxit} {params.tolerance}"
+
+
+checkpoint plan_evaluations:
+    input:
+        expand(
+            "results/weights/{model}/{fraction}.json", model=MODELS, fraction=FRACTIONS
+        ),
+    output:
+        "results/qc/evaluation_plan.json",
+    params:
+        code=PLANNING_CODE,
+    run:
+        plan_evaluations(input, output[0])
+
+
+def planned_inputs(wildcards: Wildcards) -> dict[str, str]:
+    with checkpoints.plan_evaluations.get().output[0].open() as stream:
+        return evaluation_inputs(
+            stream.read(), str(wildcards.model), str(wildcards.fraction)
+        )
+
+
+rule materialize_evaluation:
+    input:
+        unpack(planned_inputs),
+    output:
+        metrics="results/evaluation/{model}/{fraction}/metrics.parquet",
+        predictions="results/evaluation/{model}/{fraction}/predictions.parquet",
+        report="results/evaluation/{model}/{fraction}/fit.json",
+    params:
+        label=lambda wc: f"{wc.model}/soft_top_{wc.fraction}",
+        code=PLANNING_CODE,
+    run:
+        relabel_evaluation(
+            input.metrics,
+            input.predictions,
+            input.report,
+            output.metrics,
+            output.predictions,
+            output.report,
+            params.label,
+        )
+
+
+rule summarize:
+    input:
+        metrics=METRICS,
+        coverage="results/qc/genotype_coverage.json",
+        plan="results/qc/evaluation_plan.json",
+        controls="results/qc/control_plan.json",
+        weights=expand(
+            "results/weights/{model}/{fraction}.json", model=MODELS, fraction=FRACTIONS
+        ),
+    output:
+        parquet="results/summary/metrics.parquet",
+        csv="results/summary/metrics.csv",
+        report="results/summary/report.json",
+    params:
+        code=REPORT_CODE,
+    run:
+        summarize(
+            input.metrics,
+            input.coverage,
+            input.weights,
+            output.parquet,
+            output.csv,
+            output.report,
+            config,
+            input.plan,
+            input.controls,
+        )
+
+
+rule bootstrap_uncertainty:
+    input:
+        metrics="results/summary/metrics.parquet",
+        predictions=PREDICTIONS,
+    output:
+        intervals="results/uncertainty/intervals.parquet",
+        units="results/uncertainty/sample_units.parquet",
+        report="results/uncertainty/report.json",
+    params:
+        code=UNCERTAINTY_CODE,
+        settings=config["uncertainty"],
+    resources:
+        mem_mb=2000,
+    run:
+        write_uncertainty(
+            list(input.predictions),
+            input.metrics,
+            output.intervals,
+            output.units,
+            output.report,
+            **params.settings,
+        )
+
+
+rule plot_results:
+    input:
+        metrics="results/summary/metrics.parquet",
+        intervals="results/uncertainty/intervals.parquet",
+    output:
+        PLOTS,
+    params:
+        code=PLOT_CODE,
+    resources:
+        mem_mb=1000,
+    run:
+        plot_results(input.metrics, Path(output[0]).parent, input.intervals)
+
+
+rule all_missense_weights:
+    input:
+        "results/variants/evaluation.parquet",
+    output:
+        weights="results/controls/weights/all_missense.parquet",
+        report="results/controls/weights/all_missense.json",
+    params:
+        code=CONTROL_CODE,
+    run:
+        make_control_weights(input[0], output.weights, output.report, "all_missense")
+
+
+rule shuffled_weights:
+    input:
+        "results/weights/{model}/{fraction}.parquet",
+    output:
+        weights="results/controls/weights/shuffle/{model}/{fraction}/seed_{seed}.parquet",
+        report="results/controls/weights/shuffle/{model}/{fraction}/seed_{seed}.json",
+    params:
+        code=CONTROL_CODE,
+    wildcard_constraints:
+        model="|".join(SHUFFLE_MODELS),
+        fraction="|".join(q.replace(".", r"\.") for q in FRACTIONS),
+        seed="|".join(SHUFFLE_SEEDS),
+    run:
+        setting = (
+            f"shuffle/{wildcards.model}/{wildcards.fraction}/seed_{wildcards.seed}"
+        )
+        make_control_weights(
+            input[0], output.weights, output.report, setting, int(wildcards.seed)
+        )
+
+
+checkpoint plan_controls:
+    input:
+        expand("results/controls/weights/{setting}.json", setting=CONTROL_SETTINGS),
+    output:
+        "results/qc/control_plan.json",
+    params:
+        code=CONTROL_CODE,
+    run:
+        plan_controls(input, output[0])
+
+
+def planned_control_inputs(wildcards: Wildcards) -> dict[str, str]:
+    with checkpoints.plan_controls.get().output[0].open() as stream:
+        return control_inputs(stream.read(), str(wildcards.setting))
+
+
+rule build_control_kernel:
+    input:
+        gds="results/inputs/hybrids/AGPv4_hybrids.gds",
+        weights="results/controls/weights/{setting}.parquet",
+    output:
+        kernel="results/controls/kernels/{setting}.rds",
+        report="results/controls/kernels/{setting}.json",
+    params:
+        chunk=config["kernel"]["chunk_size"],
+        scale=str(config["kernel"]["scale_genotypes"]).upper(),
+        code=KERNEL_CODE,
+    conda:
+        "envs/r.yaml"
+    threads: 8
+    resources:
+        mem_mb=16000,
+    shell:
+        "Rscript workflow/scripts/build_kernel.R {input.gds:q} {input.weights:q} "
+        "{output.kernel:q} {output.report:q} {params.chunk} {params.scale}"
+
+
+rule evaluate_control_unique:
+    input:
+        g="results/inputs/hybrids/G.rds",
+        q="results/inputs/hybrids/Q.rds",
+        nam="results/inputs/NAM_H/pheno.rds",
+        ames="results/inputs/Ames_H/pheno.rds",
+        kernel="results/controls/kernels/{setting}.rds",
+    output:
+        metrics="results/controls/evaluation_unique/{setting}/metrics.parquet",
+        predictions="results/controls/evaluation_unique/{setting}/predictions.parquet",
+        report="results/controls/evaluation_unique/{setting}/fit.json",
+    params:
+        code=EVALUATION_CODE,
+        traits=",".join(config["traits"]),
+        maxit=config["evaluation"]["maxit"],
+        tolerance=config["evaluation"]["tolerance"],
+    conda:
+        "envs/r.yaml"
+    threads: 8
+    resources:
+        mem_mb=16000,
+    shell:
+        "Rscript workflow/scripts/evaluate.R {input.g:q} {input.q:q} {input.nam:q} {input.ames:q} "
+        "{input.kernel:q} {wildcards.setting:q} {output.metrics:q} {output.predictions:q} {output.report:q} "
+        "{params.traits:q} {params.maxit} {params.tolerance}"
+
+
+rule materialize_control:
+    input:
+        unpack(planned_control_inputs),
+    output:
+        metrics="results/controls/evaluation/{setting}/metrics.parquet",
+        predictions="results/controls/evaluation/{setting}/predictions.parquet",
+        report="results/controls/evaluation/{setting}/fit.json",
+    params:
+        code=PLANNING_CODE,
+    run:
+        relabel_evaluation(
+            input.metrics,
+            input.predictions,
+            input.report,
+            output.metrics,
+            output.predictions,
+            output.report,
+            str(wildcards.setting),
+        )

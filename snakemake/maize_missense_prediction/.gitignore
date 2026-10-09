@@ -1,0 +1,4 @@
+.venv/
+.snakemake/
+results/
+!uv.lock

@@ -1,0 +1,39 @@
+inputs:
+  scores:
+    repo: plantcad/maize-allele-frequency-raw-data
+    revision: e3a5fceb79602ebb2ba709800b6954f8921b130f
+    file: Maize_Hapmap3_Exclude_TE_PlantCAD_Zero_Shot_Scores.parquet
+  annotations:
+    repo: plantcad/maize-allele-frequency
+    revision: b2e5138cb7e8d952e6c674c488e89e35e86abe52
+    files: [full/validation.parquet, full/test.parquet]
+  hybrids:
+    repo: plantcad/_dev_maize_genomic_prediction_eval
+    revision: c65c56f84090f6049a8dc02849e7d0761169648d
+  chain_url: https://de.cyverse.org/anon-files/iplant/home/maizegdb/maizegdb/B73v5_JBROWSE_AND_ANALYSES/chain_files/Chain_files_v4_v5/B73_RefGen_v4_to_Zm-B73-REFERENCE-NAM-5.0.chain
+  genome_url: https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-62/fasta/zea_mays/dna/Zea_mays.Zm-B73-REFERENCE-NAM-5.0.dna_sm.toplevel.fa.gz
+
+# All methods use exactly the same mapped missense SNPs with finite scores.
+# Higher transformed scores receive more weight. Original scores are retained.
+models:
+  PlantCAD: abs
+  phyloP: identity
+  phastCons: identity
+fractions: [0.01, 0.05, 0.1, 0.2, 0.5]
+controls:
+  # One common permutation of canonical SNP IDs per seed, reused across settings.
+  shuffle_models: [PlantCAD]
+  shuffle_seeds: [20260929]
+traits: [GY_adjusted, PH, DTS]
+# Use centered allele counts without per-SNP variance scaling. This makes
+# G1 invariant to swapping which allele is counted. Preserve the supplied G0.
+kernel:
+  chunk_size: 2000
+  scale_genotypes: false
+evaluation:
+  maxit: 1000
+  tolerance: 1.0e-5
+uncertainty:
+  n_resamples: 5000
+  seed: 20260930
+  confidence_level: 0.95

@@ -20,7 +20,9 @@ repos:
     rev: v0.9.4
     hooks:
       - id: ruff-format
+        exclude: ^snakemake/maize_missense_prediction/
       - id: ruff
+        exclude: ^snakemake/maize_missense_prediction/
         args: ["--fix", "--show-fixes"]
   - repo: https://github.com/ComPWA/taplo-pre-commit
     rev: v0.9.3
@@ -37,3 +39,27 @@ repos:
     hooks:
       - id: pyrefly-typecheck-system
         pass_filenames: false
+        exclude: ^snakemake/maize_missense_prediction/
+  - repo: local
+    hooks:
+      - id: maize-missense-ruff
+        name: maize missense Ruff
+        language: system
+        entry: uv run --project snakemake/maize_missense_prediction --locked ruff check --fix
+        files: ^snakemake/maize_missense_prediction/.*\.py$
+      - id: maize-missense-ruff-format
+        name: maize missense Ruff format
+        language: system
+        entry: uv run --project snakemake/maize_missense_prediction --locked ruff format
+        files: ^snakemake/maize_missense_prediction/.*\.py$
+      - id: maize-missense-ty
+        name: maize missense ty
+        language: system
+        entry: uv run --project snakemake/maize_missense_prediction --locked ty check --project snakemake/maize_missense_prediction
+        files: ^snakemake/maize_missense_prediction/.*(\.py|pyproject\.toml|uv\.lock)$
+        pass_filenames: false
+      - id: maize-missense-snakefmt
+        name: maize missense snakefmt
+        language: system
+        entry: uv run --project snakemake/maize_missense_prediction --locked snakefmt
+        files: ^snakemake/maize_missense_prediction/.*(Snakefile|\.smk)$

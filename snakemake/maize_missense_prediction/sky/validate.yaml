@@ -1,0 +1,26 @@
+name: maize-missense-validate
+workdir: snakemake/maize_missense_prediction
+resources:
+  infra: aws
+  cpus: 8+
+  memory: 32+
+envs:
+  POLARS_MAX_THREADS: "4"
+  OMP_NUM_THREADS: "1"
+  OPENBLAS_NUM_THREADS: "1"
+  CONDA_CHANNEL_PRIORITY: strict
+run: |
+  set -euo pipefail
+  export PATH="$HOME/.local/share/maize-missense-conda/bin:$HOME/.local/bin:$PATH"
+  export CONDA_EXE="$HOME/.local/share/maize-missense-conda/bin/conda"
+  conda config --set channel_priority strict
+  uv sync --locked
+  uv run --locked ruff check src tests
+  uv run --locked ruff format --check src tests
+  uv run --locked ty check
+  uv run --locked pytest
+  uv run --locked snakefmt --check workflow
+  uv run --locked snakemake --dry-run --jobs 1 --cores 8
+  uv run --locked snakemake --conda-create-envs-only --jobs 1 --cores 8
+  r_prefix=$(find .snakemake/conda -mindepth 1 -maxdepth 1 -type d ! -name archive | head -1)
+  "$r_prefix/bin/Rscript" tests/run_r.R

@@ -1,0 +1,142 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1180" viewBox="0 0 1200 1180" role="img" aria-labelledby="title description">
+  <title id="title">Comparing missense scores for trait prediction</title>
+  <desc id="description">Overview of the three-score comparison. From about 13.3 million genotyped variants, retain about 153 thousand shared missense SNPs with finite scores from PlantCAD, phyloP and phastCons. Compare score-weighted missense kernels against an unchanged genome-wide baseline. Cross-panel evaluation tests transfer between NAM and Ames, scoring across the held-out panel. NAM leave-one-family-out tests transfer to an unseen family within NAM, scoring within each held-out family and averaging across families. Controls are omitted from this overview.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#687582"/></marker>
+    <style>
+      text { font-family: Arial, Helvetica, sans-serif; fill: #182631; }
+      .title { font-size: 32px; font-weight: 700; }
+      .heading { font-size: 23px; font-weight: 700; }
+      .body { font-size: 21px; }
+      .note { font-size: 18px; fill: #52616d; }
+      .family-label { font-size: 17px; text-anchor: middle; }
+      .panel { fill: #ffffff; stroke: #b8c6cf; stroke-width: 1.2; }
+      .family { fill: #eaf2f5; stroke: #b8c6cf; stroke-width: 1; }
+      .individual { fill: #687582; }
+      .box { fill: #f5f7f9; stroke: #d7dfe5; stroke-width: 1.2; }
+      .accent { fill: #eaf2f5; stroke: #c8dce4; stroke-width: 1.2; }
+      .link { fill: none; stroke: #687582; stroke-width: 1.6; marker-end: url(#arrow); }
+      .bus { fill: none; stroke: #687582; stroke-width: 1.6; }
+    </style>
+  </defs>
+  <rect width="1200" height="1180" fill="#ffffff"/>
+  <text x="48" y="59" class="title">Do missense scores improve trait prediction?</text>
+  <text x="48" y="94" class="note">Three precomputed scores · the same variants and held-out samples for every comparison</text>
+
+  <g id="genotype-input">
+    <rect x="48" y="136" width="330" height="114" rx="10" class="box"/>
+    <text x="72" y="175" class="heading">Maize genotypes</text>
+    <text x="72" y="215" class="body">13.3M variants</text>
+  </g>
+  <path d="M378 193 H438" class="link"/>
+  <g id="common-pool">
+    <rect x="440" y="136" width="712" height="114" rx="10" class="accent"/>
+    <text x="464" y="174" class="heading">Shared missense set: ≈153k SNPs</text>
+    <text x="464" y="207" class="body">Finite scores from all three methods</text>
+    <text x="464" y="235" class="note">Matched to genotypes by genomic position and alleles</text>
+  </g>
+  <path d="M796 250 V275 H224 V314" class="link"/>
+  <path d="M796 275 H600 V314" class="link"/>
+  <path d="M796 275 H976 V314" class="link"/>
+
+  <g id="plantcad">
+    <rect x="48" y="318" width="352" height="90" rx="10" fill="#f4f0fa" stroke="#ddd3ec"/>
+    <text x="224" y="356" text-anchor="middle" class="heading">PlantCAD</text>
+    <text x="224" y="388" text-anchor="middle" class="body">|LLR|</text>
+  </g>
+  <g id="phylop">
+    <rect x="424" y="318" width="352" height="90" rx="10" fill="#edf7f6" stroke="#cde5e2"/>
+    <text x="600" y="356" text-anchor="middle" class="heading">phyloP</text>
+    <text x="600" y="388" text-anchor="middle" class="body">Conservation score</text>
+  </g>
+  <g id="phastcons">
+    <rect x="800" y="318" width="352" height="90" rx="10" fill="#fcf4ec" stroke="#ecdcc9"/>
+    <text x="976" y="356" text-anchor="middle" class="heading">phastCons</text>
+    <text x="976" y="388" text-anchor="middle" class="body">Conservation score</text>
+  </g>
+  <path d="M224 408 V436 H408 V471" class="link"/>
+  <path d="M600 408 V436 H408" class="bus"/>
+  <path d="M976 408 V436 H600" class="bus"/>
+
+  <g id="missense-kernel">
+    <rect x="48" y="475" width="720" height="144" rx="10" class="accent"/>
+    <text x="72" y="514" class="heading">Score-weighted missense kernel (G₁)</text>
+    <text x="72" y="550" class="body">Top 1%, 5%, 10%, 20%, 50% of variants</text>
+    <text x="72" y="582" class="note">Boundary ties receive equal fractional weights.</text>
+    <text x="72" y="605" class="note">One genetic-similarity matrix per score and fraction.</text>
+  </g>
+  <g id="genomewide-baseline">
+    <rect x="816" y="475" width="336" height="144" rx="10" class="box"/>
+    <text x="840" y="514" class="heading">Genome-wide baseline</text>
+    <text x="840" y="550" class="body">Supplied G₀, unchanged</text>
+    <text x="840" y="586" class="note">Not restricted to missense</text>
+  </g>
+  <path d="M408 619 V665" class="link"/>
+  <path d="M984 619 V665" class="link"/>
+
+  <g id="held-out-evaluation">
+    <rect x="48" y="669" width="1104" height="467" rx="10" class="box"/>
+    <text x="72" y="707" class="heading">Predict held-out traits: G₀ versus G₀ + G₁</text>
+    <text x="72" y="741" class="note">Yield · plant height · days to silking</text>
+    <path d="M72 759 H1128 M600 779 V1054" fill="none" stroke="#d7dfe5" stroke-width="1.2"/>
+    <g id="cross-panel-evaluation">
+      <text x="72" y="797" class="heading">Cross-panel: NAM ↔ Ames</text>
+      <g id="train-nam-test-ames">
+        <text x="88" y="830" class="note">Train: NAM</text>
+        <rect x="88" y="842" width="176" height="60" rx="6" class="panel"/>
+        <rect x="100" y="856" width="42" height="32" rx="3" class="family"/>
+        <rect x="155" y="856" width="42" height="32" rx="3" class="family"/>
+        <rect x="210" y="856" width="42" height="32" rx="3" class="family"/>
+        <text x="121" y="878" class="family-label">F₁</text>
+        <text x="176" y="878" class="family-label">F₂</text>
+        <text x="231" y="878" class="family-label">…</text>
+        <path d="M278 872 H342" class="link"/>
+        <text x="356" y="830" class="note">Test: Ames</text>
+        <rect x="356" y="842" width="176" height="60" rx="6" class="panel"/>
+        <g class="individual">
+          <circle cx="380" cy="860" r="4"/><circle cx="414" cy="866" r="4"/><circle cx="450" cy="860" r="4"/><circle cx="489" cy="866" r="4"/>
+          <circle cx="395" cy="885" r="4"/><circle cx="435" cy="882" r="4"/><circle cx="473" cy="886" r="4"/><circle cx="511" cy="880" r="4"/>
+        </g>
+      </g>
+      <g id="train-ames-test-nam">
+        <text x="88" y="935" class="note">Train: Ames</text>
+        <rect x="88" y="947" width="176" height="60" rx="6" class="panel"/>
+        <g class="individual">
+          <circle cx="112" cy="965" r="4"/><circle cx="146" cy="971" r="4"/><circle cx="182" cy="965" r="4"/><circle cx="221" cy="971" r="4"/>
+          <circle cx="127" cy="990" r="4"/><circle cx="167" cy="987" r="4"/><circle cx="205" cy="991" r="4"/><circle cx="243" cy="985" r="4"/>
+        </g>
+        <path d="M278 977 H342" class="link"/>
+        <text x="356" y="935" class="note">Test: NAM</text>
+        <rect x="356" y="947" width="176" height="60" rx="6" class="panel"/>
+        <rect x="368" y="961" width="42" height="32" rx="3" class="family"/>
+        <rect x="423" y="961" width="42" height="32" rx="3" class="family"/>
+        <rect x="478" y="961" width="42" height="32" rx="3" class="family"/>
+        <text x="389" y="983" class="family-label">F₁</text>
+        <text x="444" y="983" class="family-label">F₂</text>
+        <text x="499" y="983" class="family-label">…</text>
+      </g>
+      <text x="72" y="1040" class="note">Score across the held-out panel</text>
+    </g>
+    <g id="family-evaluation">
+      <text x="628" y="797" class="heading">NAM leave-one-family-out</text>
+      <rect x="628" y="842" width="500" height="165" rx="6" class="panel"/>
+      <text x="646" y="870" class="note">Within the NAM panel</text>
+      <text x="646" y="905" class="note">Train: other families</text>
+      <text x="994" y="905" class="note">Test</text>
+      <rect x="646" y="918" width="72" height="43" rx="4" class="family"/>
+      <rect x="730" y="918" width="72" height="43" rx="4" class="family"/>
+      <rect x="814" y="918" width="72" height="43" rx="4" class="family"/>
+      <text x="682" y="945" class="family-label">F₁</text>
+      <text x="766" y="945" class="family-label">F₂</text>
+      <text x="850" y="945" class="family-label">…</text>
+      <path d="M900 940 H971" class="link"/>
+      <rect x="984" y="918" width="126" height="43" rx="4" fill="#ffffff" stroke="#687582" stroke-width="1.4" stroke-dasharray="5 3"/>
+      <text x="1047" y="945" class="family-label">Held-out Fₖ</text>
+      <text x="878" y="990" text-anchor="middle" class="note">Repeat with each family held out</text>
+      <text x="628" y="1040" class="note">Score within each family, then average</text>
+    </g>
+    <text x="72" y="1086" class="body">Compare correlation / error improvements over G₀ within each evaluation.</text>
+    <text x="72" y="1117" class="note">Training phenotypes only; the same population-structure covariates in all models.</text>
+  </g>
+  <text x="48" y="1166" class="note">Schematic groups: boxes represent families; dots represent individuals. Counts are illustrative.</text>
+</svg>
